@@ -1,89 +1,457 @@
 ================================================================
-DOKUMENTASI APLIKASI FILTER-IN (MONITORING KENDALA & VALIDASI)
+  FILTERIN v2.0 — DOKUMENTASI APLIKASI (MONITORING KENDALA & VALIDASI)
+  Telkom ASO Magelang - Unit Kendala
 ================================================================
-Dibuat oleh: [Mahasiswa magang ASO Telkom]
-Terakhir Update: 05 Desember 2025
+  Dibuat oleh     : Mahasiswa magang ASO Telkom
+  Di-refactor pada: 19 April 2026
+  Versi           : 2.0 (Security + UX + Concurrency upgrade)
+================================================================
+
 
 A. DESKRIPSI SINGKAT
 --------------------
-Aplikasi ini adalah Web-Based Tools untuk mempermudah tim Validasi/Daman
-dalam mengelola data kendala, sinkronisasi BIMA, dan update status UNSC.
-Dibangun menggunakan Python (Flask), Google Sheets API, dan Database MySQL.
+Aplikasi web-based untuk mempermudah tim Unit Kendala mengelola data
+kendala Indihome/Indibiz dalam jumlah massal. Sumber data utama
+adalah Google Sheets yang di-share dengan 3 unit kerja. FilterIN
+merupakan layer pintar di atas Google Sheets yang memberikan:
+
+  - Quick Edit Modal (tanpa scroll horizontal panjang)
+  - Row lock antar user FilterIN (mencegah tabrakan edit)
+  - Audit log (siapa-edit-apa-kapan)
+  - Notifikasi data baru hasil sinkronisasi BIMA
+  - Dark mode + UI modern
+  - Password hashing + CSRF + brute-force protection
+
+Dibangun dengan: Python Flask, MySQL (user/lock/audit),
+Google Sheets API (master data), Jinja2 Templates.
+
 
 B. PERSIAPAN SOFTWARE (PREREQUISITES)
 -------------------------------------
-Sebelum menjalankan aplikasi di laptop baru, pastikan sudah terinstall:
-1. Python (Versi 3.9 ke atas). Jangan lupa centang "Add Python to PATH" saat install.
-2. XAMPP (Untuk database MySQL).
-3. Visual Studio Code (Text Editor).
-4. Google Chrome / Edge.
+Pastikan laptop sudah terinstall:
 
-C. CARA INSTALASI PERTAMA KALI
-------------------------------
-1. Copy seluruh folder project ini ke laptop.
-2. Buka folder tersebut menggunakan VS Code.
-3. Buka Terminal di VS Code (Ctrl + `), lalu ketik perintah berikut untuk install library:
-   
-   pip install flask gspread google-auth pymysql pandas openpyxl xlrd lxml waitress requests
+  1. Python 3.9 atau lebih baru.
+     -> Saat install, CENTANG "Add Python to PATH"
+     -> Verifikasi: buka CMD, ketik `python --version`
 
-4. Pastikan file "credentials.json" (Kunci Akses Google Sheet) ada di dalam folder project. 
-   JANGAN DIHAPUS! Tanpa file ini, aplikasi tidak bisa baca Google Sheet.
+  2. XAMPP (untuk MySQL/MariaDB).
+     -> Download dari apachefriends.org
+     -> Cukup centang modul Apache + MySQL
 
-D. SETTING DATABASE
--------------------
-1. Nyalakan XAMPP (Start Apache & MySQL).
-2. Buka browser: http://localhost/phpmyadmin
-3. Buat database baru dengan nama: user_db
-4. Import file SQL (jika ada backup) atau buat tabel 'users' dengan kolom:
-   - id (int, primary key, auto_increment)
-   - nama (varchar)
-   - username (varchar)
-   - password (varchar)
-   
-   *Akun Default:*
-   Username: [TelkomASO]
-   Password: [TelkomASO001]
+  3. Visual Studio Code (editor).
+     -> Install extension: "Python" (Microsoft), "Jinja"
 
-E. CARA MENJALANKAN APLIKASI
+  4. Google Chrome / Edge (browser modern).
+
+  5. Git (opsional, untuk clone dari GitHub).
+
+
+C. CARA INSTALASI PERTAMA KALI (STEP-BY-STEP)
+---------------------------------------------
+
+  C.1  COPY / CLONE FOLDER PROJECT
+  --------------------------------
+  Copy seluruh folder project ini ke laptop (misal ke C:\filterin\).
+  Pastikan file & folder berikut ADA:
+
+     backend/
+        app_flask.py           <- Kode utama aplikasi
+        server.py              <- ASGI wrapper (tidak dipakai di lokal)
+        schema.sql             <- Struktur database MySQL
+        .env                   <- Variabel environment
+        credentials.json       <- Kunci Google Sheet (JANGAN DISEBAR!)
+        requirements.txt       <- Daftar library Python
+        templates/             <- File HTML
+        static/                <- CSS, JS, gambar
+     notes.txt                 <- File ini
+
+  C.2  BUKA FOLDER DI VS CODE
+  ---------------------------
+  File > Open Folder > pilih folder project.
+
+  C.3  BUKA TERMINAL DI VS CODE
+  -----------------------------
+  Menu: Terminal > New Terminal  (atau Ctrl + `)
+  Pastikan terminal berada di ROOT project (bukan di folder backend).
+
+  C.4  BUAT VIRTUAL ENVIRONMENT (REKOMENDASI)
+  -------------------------------------------
+  Di terminal ketik:
+
+     python -m venv venv
+
+  Lalu aktifkan:
+
+     Windows CMD   :  venv\Scripts\activate
+     Windows PowerShell :  venv\Scripts\Activate.ps1
+     Mac/Linux     :  source venv/bin/activate
+
+  Kalau berhasil, prompt akan ada tulisan (venv) di depan.
+
+  C.5  INSTALL SEMUA LIBRARY PYTHON
+  ---------------------------------
+  Di terminal (masih aktif venv):
+
+     pip install -r backend/requirements.txt
+
+  Atau manual satu-satu:
+
+     pip install flask flask-wtf flask-limiter pymysql gspread ^
+                 google-auth pandas openpyxl xlrd lxml waitress ^
+                 werkzeug python-dotenv requests
+
+  Kalau lambat, pakai mirror:
+     pip install -r backend/requirements.txt -i https://pypi.org/simple
+
+  C.6  PASTIKAN FILE credentials.json TERSEDIA
+  --------------------------------------------
+  File ini berisi KUNCI service account Google.
+  JANGAN DIHAPUS dan JANGAN DI-UPLOAD ke GitHub/publik.
+  Letaknya harus di:  backend/credentials.json
+
+
+D. SETTING DATABASE MYSQL
+-------------------------
+
+  D.1  NYALAKAN XAMPP
+  -------------------
+  Buka XAMPP Control Panel, Klik Start di:
+     - Apache
+     - MySQL
+
+  D.2  BUAT DATABASE DAN USER
+  ---------------------------
+  Buka browser ke: http://localhost/phpmyadmin
+
+  Pilih tab "SQL" di bagian atas, paste perintah ini lalu klik "Go":
+
+     CREATE DATABASE IF NOT EXISTS user_db
+        CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+     CREATE USER IF NOT EXISTS 'filterin'@'localhost'
+        IDENTIFIED BY 'filterin_pass_2026';
+
+     GRANT ALL PRIVILEGES ON user_db.* TO 'filterin'@'localhost';
+     FLUSH PRIVILEGES;
+
+  D.3  IMPORT STRUKTUR TABEL
+  --------------------------
+  Di phpMyAdmin, klik database "user_db" di sidebar kiri.
+  Pilih tab "Import", klik "Choose File", pilih:
+     backend/schema.sql
+  Klik "Go" di bawah.
+
+  Tabel yang akan dibuat:
+     - users           (akun login)
+     - edit_locks      (row lock)
+     - audit_log       (jejak siapa edit apa)
+     - sync_new_rows   (tracking data baru dari sync BIMA)
+     - login_attempts  (brute-force protection)
+
+  D.4  INSERT AKUN DEFAULT
+  ------------------------
+  Opsi A - Via script Python (RECOMMENDED, password di-hash otomatis):
+
+     Buka terminal VS Code, jalankan:
+        cd backend
+        python hash_password.py
+
+     File ini akan mencari user dengan password plaintext dan
+     auto-hash. Tapi pertama, tambahkan user lewat phpMyAdmin dulu:
+
+  Opsi B - Langsung SQL (password PLAIN TEXT, akan di-hash saat
+  login pertama kali):
+
+     Di phpMyAdmin > user_db > tab SQL, jalankan:
+
+        INSERT INTO users (nama, username, password, role) VALUES
+          ('Telkom Magelang', 'TelkomASO', 'TelkomASO001', 'admin'),
+          ('Devanda Adrian',  'dava234',   'dava123',       'admin'),
+          ('Operator 1',      'operator1', 'op123',         'operator');
+
+     *Password otomatis ter-hash saat user pertama kali login.*
+
+
+E. KONFIGURASI FILE .env
+------------------------
+Buka file  backend/.env  di VS Code, pastikan isinya seperti ini
+(untuk local development):
+
+   MYSQL_HOST=localhost
+   MYSQL_PORT=3306
+   MYSQL_USER=filterin
+   MYSQL_PASSWORD=filterin_pass_2026
+   MYSQL_DB=user_db
+
+   FLASK_SECRET_KEY=ganti-dengan-kata-rahasia-acak-minimal-32-karakter
+   FLASK_DEBUG=0
+
+   GOOGLE_CREDS_PATH=credentials.json
+   SPREADSHEET_UPLOAD=1XUF1ouXjo7Od5qq9r84lJmgXDhyhgpWuA2NvZNRtgTA
+   SPREADSHEET_KENDALA=1DnTNp95IbLU1Rta3vF-IGk3kvu47WWmHkaxoRPtjWJ8
+   SPREADSHEET_ODP=19g1D9AjCO82_5hHENfPXMpQgt_3ULdFVSZ-o17DOm_I
+   SPREADSHEET_PSRE=16xuf9NuNnHsk_Nv31Ynb7URDSHAo5EKx3atZh5HLguE
+
+   SHEET_CACHE_TTL=30
+   EDIT_LOCK_TTL_MINUTES=5
+
+PENTING:
+  - GANTI FLASK_SECRET_KEY dengan string random panjang (min 32 char).
+    Bisa pakai: python -c "import secrets; print(secrets.token_hex(32))"
+  - Kalau password MySQL XAMPP Anda masih default kosong, ubah
+    MYSQL_USER=root dan MYSQL_PASSWORD= (kosongin), dan skip step D.2.
+
+
+F. CARA MENJALANKAN APLIKASI
 ----------------------------
-CARA 1 (Untuk User Harian / Tanpa VS Code):
-1. Pastikan XAMPP sudah dinyalakan.
-2. Buka folder project, cari file bernama "RUN_APP.bat".
-3. Klik 2x file tersebut. Akan muncul layar hitam (CMD), biarkan terbuka (minimize saja).
-4. Buka browser dan akses alamat IP laptop server (misal: http://192.168.1.XX:5000).
 
-CARA 2 (Untuk Developer / Edit Kodingan):
-1. Buka VS Code.
-2. Di terminal, ketik: python app.py
-3. Akses di browser: http://127.0.0.1:5000
+  F.1  CARA 1 — DEVELOPMENT (untuk edit kode)
+  -------------------------------------------
+  Buka terminal di VS Code (aktifkan venv dulu), lalu:
 
-F. LINK GOOGLE SPREADSHEET SUMBER
+     cd backend
+     python app_flask.py
+
+  Akses di browser:  http://127.0.0.1:5000
+
+  Ctrl + C untuk stop.
+  Hot-reload: setiap ubah kode Python/template, server auto-restart.
+
+  F.2  CARA 2 — PRODUCTION (untuk dipakai banyak orang di kantor)
+  ---------------------------------------------------------------
+  Pakai waitress (WSGI server, lebih stabil dari flask dev server):
+
+     cd backend
+     waitress-serve --host=0.0.0.0 --port=5000 app_flask:flask_app
+
+  Akses dari laptop server   :  http://127.0.0.1:5000
+  Akses dari laptop lain di  :  http://192.168.x.xx:5000
+  jaringan yang sama            (ganti IP dengan IP laptop server)
+
+  Untuk tahu IP laptop:  buka CMD, ketik  ipconfig
+  Cari "IPv4 Address" di bagian Wireless/Ethernet Adapter.
+
+  F.3  CARA 3 — PAKAI FILE BAT (PALING PRAKTIS)
+  ---------------------------------------------
+  Buat file  start_filterin.bat  di root project, isinya:
+
+     @echo off
+     TITLE FilterIN Server
+     echo Starting FilterIN on port 5000...
+     cd backend
+     call ..\venv\Scripts\activate
+     waitress-serve --host=0.0.0.0 --port=5000 app_flask:flask_app
+     pause
+
+  Klik 2x file tersebut → CMD terbuka, biarkan minimize.
+  Akses di browser sesuai F.2.
+
+
+G. DEFAULT AKUN LOGIN
+---------------------
+Setelah setup D.4:
+
+     Username : TelkomASO    Password : TelkomASO001   (admin)
+     Username : dava234      Password : dava123        (admin)
+     Username : operator1    Password : op123          (operator)
+
+Role "admin" bisa lihat halaman "Audit Log".
+Role "operator" hanya bisa edit kendala, tidak lihat audit.
+Role "viewer" (jika dibuat): read-only.
+
+Catatan: password plain text akan OTOMATIS di-hash jadi pbkdf2
+saat user login pertama kali. Jadi aman.
+
+
+H. FITUR-FITUR BARU (versi 2.0)
+-------------------------------
+
+  H.1  QUICK EDIT MODAL (pengganti edit inline)
+       Di halaman Sheet Kendala Master, klik tombol pensil ✏️
+       di sebelah kanan tiap baris. Modal akan muncul berisi:
+          - Context read-only: ORDER_ID, WONUM, STO, DATEL,
+            SUB ERROR CODE, ENGINEER MEMO, STATUS, ORDER DATE
+          - Form editable: ACTUAL KENDALA, FEEDBACK ASO,
+            TGL FEEDBACK (otomatis), NOTES ASO, IS_ACTIVE_KENDALA
+       Tidak perlu scroll kanan-kiri lagi!
+       Shortcut: Ctrl+S = Simpan, Esc = Batal.
+
+  H.2  PILIH KOLOM & MODE CEPAT
+       Klik "Pilih Kolom" untuk centang/uncentang kolom yang mau
+       ditampilkan. Pilihan disimpan di browser (localStorage),
+       beda user bisa punya tampilan sendiri.
+       Klik "Mode Cepat" untuk langsung tampilkan hanya kolom
+       kerja (ORDER_ID, WONUM, STO, SUBERROR, MEMO, ACTUAL,
+       FEEDBACK, NOTES, IS_ACTIVE).
+
+  H.3  NOTIFIKASI DATA BARU
+       Setelah klik "Sinkronkan Data BIMA":
+          - Banner oranye muncul: "{N} data baru baru saja
+            disinkronkan!"
+          - Tombol "Lihat Data Baru" untuk filter cepat.
+          - Baris baru ditandai badge "NEW" + garis oranye
+            di sebelah kiri.
+          - Tombol "Tandai Sudah Dibaca" untuk dismiss.
+
+  H.4  ROW LOCK (anti tabrakan antar user FilterIN)
+       Saat user A buka Quick Edit Modal row X, row tersebut
+       ter-lock selama 5 menit. User B yang buka row yang sama
+       akan lihat warning: "Row sedang diedit oleh Andi
+       (sejak 14:23)" dan tombol Save dinonaktifkan.
+       Lock otomatis release setelah save / cancel / 5 menit.
+
+       CATATAN: Lock ini hanya berlaku ANTAR USER FILTERIN.
+       Kalau unit kerja lain edit sheet langsung via
+       docs.google.com, kami tidak bisa mengunci mereka.
+
+  H.5  AUDIT LOG (khusus admin)
+       Menu sidebar "Audit Log" (hanya muncul untuk admin).
+       Berisi tabel: kapan, siapa, aksi apa, row mana, kolom apa,
+       nilai lama → nilai baru. Bisa filter per user / action.
+
+  H.6  DARK MODE
+       Tombol "Dark Mode" di bagian bawah sidebar.
+       Pilihan disimpan di browser per user.
+
+  H.7  UI MODERN
+       - Login page: toggle show/hide password, gradient biru Telkom
+       - Flash toast auto-close 5 detik, bisa di-close manual
+       - Loading overlay global saat upload / sync
+       - Konfirmasi dialog sebelum aksi destruktif (Sync, Move UNSC)
+       - Badge role (ADMIN/OPERATOR) di header
+
+
+I. LINK GOOGLE SPREADSHEET SUMBER
 ---------------------------------
-Aplikasi ini terhubung ke Spreadsheet berikut:
-1. DB KENDALA & UNSC: [Link Google Sheet Kendala]
-2. SUMBER UPLOAD (Bima/Kpro): [Link Google Sheet Upload]
-3. ODP VALIDASI: [Link Google Sheet ODP]
+Spreadsheet yang di-share ke service account:
 
-G. TROUBLESHOOTING (MASALAH UMUM)
----------------------------------
-1. Error "MySQL Connection":
-   -> Cek apakah XAMPP sudah dinyalakan?
+  1. DB KENDALA & UNSC :
+     https://docs.google.com/spreadsheets/d/1DnTNp95IbLU1Rta3vF-IGk3kvu47WWmHkaxoRPtjWJ8
 
-2. Error "Spreadsheet Not Found / API Error":
-   -> Cek apakah internet lancar?
-   -> Cek apakah file "credentials.json" masih ada di folder?
+  2. SUMBER UPLOAD (BIMA/Kpro):
+     https://docs.google.com/spreadsheets/d/1XUF1ouXjo7Od5qq9r84lJmgXDhyhgpWuA2NvZNRtgTA
 
-3. Upload Gagal:
-   -> Pastikan format file Excel sesuai (.xlsx atau .xls).
-   -> Pastikan nama kolom di Excel sesuai standar (ORDER_ID, dsb).
+  3. ODP VALIDASI:
+     https://docs.google.com/spreadsheets/d/19g1D9AjCO82_5hHENfPXMpQgt_3ULdFVSZ-o17DOm_I
 
-4. Tampilan Web Rusak/Menu Hilang:
-   -> Tekan Ctrl + F5 di browser untuk hard refresh.
+PENTING: Service account email
+(projekcoba@liquid-shape-466203-j4.iam.gserviceaccount.com)
+HARUS di-share sebagai EDITOR di masing-masing spreadsheet.
 
 
-pip install -r requirements.txt
+J. TROUBLESHOOTING
+------------------
+
+  J.1  ERROR "Can't connect to MySQL server"
+       -> Cek XAMPP: MySQL sudah di-Start?
+       -> Cek port 3306 tidak bentrok dengan aplikasi lain.
+       -> Cek user & password di .env sama dengan yang di phpMyAdmin.
+
+  J.2  ERROR "FileNotFoundError: credentials.json"
+       -> File harus di folder backend/credentials.json
+       -> Bukan di root, dan bukan di folder lain.
+
+  J.3  ERROR "Spreadsheet not found" / "PermissionDenied"
+       -> Cek internet.
+       -> Cek service account sudah di-share ke sheet (lihat I).
+       -> Cek SPREADSHEET_* IDs di .env benar.
+
+  J.4  UPLOAD FILE GAGAL
+       -> Format harus .xlsx, .xls, atau .csv.
+       -> Cek kolom wajib di file Excel:
+             SC Order No/Track ID/CSRM No, CRM Order Type, Status
+          (untuk Filter BIMA)
+
+  J.5  LOGIN SELALU GAGAL PADAHAL PASSWORD BENAR
+       -> Cek 5 menit terakhir gagal > 5x? Sistem auto-block.
+          Tunggu 5 menit atau hapus record di tabel login_attempts:
+             DELETE FROM login_attempts WHERE username='USERNAME_ANDA';
+
+  J.6  TOMBOL "SIMPAN PERUBAHAN" DISABLED DI MODAL
+       -> Berarti row sedang di-lock oleh user lain.
+       -> Tunggu 5 menit atau minta user lain close modalnya.
+       -> Admin bisa paksa clear lock via phpMyAdmin:
+             DELETE FROM edit_locks WHERE row_key='ORDER_ID_ANDA';
+
+  J.7  TAMPILAN WEB RUSAK / MENU HILANG
+       -> Ctrl + F5 (hard refresh browser, clear cache).
+       -> Clear localStorage: F12 > Application > Local Storage > Clear.
+
+  J.8  WATERFALL / POLLING TERLALU BANYAK (RATE LIMIT GOOGLE)
+       -> Naikkan SHEET_CACHE_TTL di .env (default 30 detik).
+          Contoh: SHEET_CACHE_TTL=60 untuk cache 1 menit.
+
+  J.9  INGIN RESET SEMUA LOCK
+       Di phpMyAdmin > user_db > tab SQL:
+          DELETE FROM edit_locks;
+
+  J.10 PASSWORD USER LUPA
+       Bikin ulang via phpMyAdmin:
+          UPDATE users SET password='BARU123' WHERE username='XXX';
+       Password akan ter-hash saat login pertama.
+
+
+K. STRUKTUR FILE PROJECT (PENTING!)
+-----------------------------------
+   filterin-project/
+   ├─ backend/
+   │  ├─ app_flask.py          <- KODE UTAMA (edit ini untuk tambah fitur)
+   │  ├─ server.py             <- Wrapper ASGI (abaikan untuk lokal)
+   │  ├─ schema.sql            <- Struktur tabel MySQL
+   │  ├─ .env                  <- Config (JANGAN commit ke git!)
+   │  ├─ credentials.json      <- Kunci Google (JANGAN DISEBAR!)
+   │  ├─ requirements.txt      <- Daftar library
+   │  ├─ hash_password.py      <- Script utility hash password
+   │  ├─ templates/
+   │  │  ├─ base.html          <- Layout utama (sidebar, header)
+   │  │  ├─ login.html         <- Halaman login
+   │  │  ├─ dashboard.html     <- Dashboard statistik
+   │  │  ├─ kendalamaster.html <- Halaman UTAMA kerja (Quick Edit)
+   │  │  ├─ unsc.html          <- Halaman UNSC
+   │  │  ├─ upload.html        <- Filter upload Excel
+   │  │  ├─ audit_log.html     <- Log audit (admin)
+   │  │  ├─ ganti_password.html
+   │  │  └─ ...
+   │  └─ static/
+   │     ├─ style.css          <- CSS asli
+   │     ├─ filterin-modern.css <- CSS baru (dark mode, modal, dll)
+   │     ├─ filterin-core.js   <- JS Quick Edit Modal, CSRF, dark mode
+   │     ├─ script.js          <- JS sidebar toggle dll
+   │     └─ img/
+   └─ notes.txt                <- File ini
+   └─ start_filterin.bat       <- Shortcut jalanin server (opsional)
+
+
+L. CATATAN ARSITEKTUR (PENTING UNTUK DEVELOPER)
+-----------------------------------------------
+
+  L.1  Source of Truth tetap Google Sheets
+       FilterIN TIDAK memindah data ke MySQL. Google Sheet tetap
+       jadi database utama karena di-share dengan 3 unit kerja.
+       MySQL HANYA untuk: users, edit_locks, audit_log,
+       sync_new_rows, login_attempts.
+
+  L.2  Hybrid Architecture
+       - Unit Kendala (Anda): edit via FilterIN web (cepat + safe)
+       - Unit lain (TSEL, TATI): edit Google Sheet langsung
+       - Zero disruption untuk unit lain.
+       - Saat Anda save di FilterIN, data langsung ke Google Sheet.
+       - Saat unit lain edit Sheet, FilterIN lihat perubahan setelah
+         cache refresh (30 detik).
+
+  L.3  Kolom "kepemilikan" (kesepakatan tim)
+       - A-K (WONUM, ORDER_ID, ...) : otomatis dari sync BIMA
+       - FEEDBACK ASO, ACTUAL KENDALA, NOTES ASO : Unit Kendala
+       - FEEDBACK TSEL, NOTES TSEL               : Unit TSEL
+       - DONE TATI, NOTES TL, UPDATE TATI        : Unit TATI
+       Kalau dua unit edit kolom yang SAMA di waktu yang SAMA,
+       Google Sheet native yang menang (last write wins).
+
 
 ================================================================
-Selamat bekerja! Jika ada update fitur, edit file "app.py" (Backend) 
-atau folder "templates" (Tampilan HTML).
+  SELAMAT BEKERJA!
+  Jika ada bug atau usulan fitur:
+     - Edit  backend/app_flask.py   (Backend & logika)
+     - Edit  backend/templates/*.html   (Tampilan)
+     - Edit  backend/static/*.css / *.js   (Style & interaksi)
 ================================================================
