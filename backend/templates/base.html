@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    <title>{% block title %}FilterIN - Telkom ASO Magelang{% endblock %}</title>
+
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='filterin-modern.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='kendalamaster.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+
+    <nav class="sidebar" data-testid="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="logo" data-testid="sidebar-logo">
+            <i class="fa-solid fa-microchip logo-icon"></i>
+            <span class="logo-name">Filter<span class="logo-highlight">IN</span></span>
+
+            <div id="sidebar-toggle" class="sidebar-toggle-btn" data-testid="sidebar-toggle-btn">
+                <i class="fas fa-chevron-left"></i>
+            </div>
+        </a>
+
+        <div class="menu-content">
+            <ul class="menu-items">
+                <li class="item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    <a href="{{ url_for('dashboard') }}" data-testid="nav-dashboard">
+                        <i class="fa-solid fa-chart-line"></i><span>Dashboard</span>
+                    </a>
+                </li>
+
+                <li class="item">
+                    <div class="submenu-item" data-testid="nav-pengerjaan">
+                        <i class="fa-solid fa-briefcase"></i> <span>Pengerjaan Kpro</span>
+                        <i class="fa-solid fa-chevron-right ms-auto"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li><a href="{{ url_for('upload') }}" data-testid="nav-upload"><i class="fa-solid fa-upload"></i> Upload Data</a></li>
+                        <li><a href="{{ url_for('kendala_master') }}" data-testid="nav-kendala-master"><i class="fa-solid fa-file-excel"></i> Sheet Kendala Master</a></li>
+                        <li><a href="{{ url_for('unsc') }}" data-testid="nav-unsc"><i class="fa-solid fa-file-circle-question"></i> Sheet UNSC</a></li>
+                        <li><a href="{{ url_for('verifikasi_odp_full') }}" data-testid="nav-verifikasi-odp"><i class="fa-solid fa-user-check"></i> Validasi ODP Full</a></li>
+                    </ul>
+                </li>
+
+                <li class="item">
+                    <div class="submenu-item" data-testid="nav-program">
+                        <i class="fa-solid fa-cogs"></i><span>PROGRAM</span>
+                        <i class="fa-solid fa-chevron-right ms-auto"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li><a href="#">IMPLEMENTASI DC REFURBISH</a></li>
+                        <li><a href="#">IMPLEMENTASI PASSIVE 1:2</a></li>
+                    </ul>
+                </li>
+
+                <li class="item">
+                    <div class="submenu-item" data-testid="nav-kpi">
+                        <i class="fa-solid fa-database"></i><span>DATA KPI</span>
+                        <i class="fa-solid fa-chevron-right ms-auto"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li><a href="#">TTI</a></li>
+                        <li><a href="#">FFG</a></li>
+                        <li><a href="#">TTR FFG</a></li>
+                        <li><a href="#">UNSPEC</a></li>
+                        <li><a href="#">PS/RE</a></li>
+                    </ul>
+                </li>
+
+                <li class="item">
+                    <div class="submenu-item" data-testid="nav-tabel">
+                        <i class="fa-solid fa-table"></i><span>Tabel</span>
+                        <i class="fa-solid fa-chevron-right ms-auto"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li><a href="{{ url_for('tabel', kelas='04') }}" data-testid="nav-bima-master">BIMA MASTER</a></li>
+                        <li><a href="{{ url_for('tabel', kelas='05') }}" data-testid="nav-kpro">KPRO</a></li>
+                        <li><a href="{{ url_for('tabel', kelas='06') }}" data-testid="nav-bima">BIMA</a></li>
+                    </ul>
+                </li>
+
+                <li class="item">
+                    <div class="submenu-item" data-testid="nav-laporan">
+                        <i class="fa-solid fa-flag"></i><span>Laporan</span>
+                        <i class="fa-solid fa-chevron-right ms-auto"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li><a href="{{ url_for('wokendala') }}">WO Kendala</a></li>
+                        <li><a href="{{ url_for('psretti') }}">PS RE</a></li>
+                        <li><a href="{{ url_for('datel') }}">Datel</a></li>
+                        <li><a href="{{ url_for('verifikasi_odp_full') }}">Verifikasi ODP FULL</a></li>
+                        <li><a href="{{ url_for('summary') }}">Summary</a></li>
+                        <li><a href="{{ url_for('tati') }}">TATI</a></li>
+                        <li><a href="{{ url_for('lapvalidasiodp') }}">Laporan Validasi ODP</a></li>
+                        <li><a href="{{ url_for('newsummarykendala') }}">NEW SUMMARY KENDALA</a></li>
+                    </ul>
+                </li>
+
+                {% if user_role == 'admin' %}
+                <li class="item {% if request.endpoint == 'audit_log_view' %}active{% endif %}">
+                    <a href="{{ url_for('audit_log_view') }}" data-testid="nav-audit">
+                        <i class="fa-solid fa-clipboard-list"></i><span>Audit Log</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+
+            <ul class="menu-items user-menu">
+                <li class="item">
+                    <a href="#" id="theme-toggle-btn" data-testid="theme-toggle-btn">
+                        <i class="fa-solid fa-moon" id="theme-icon"></i><span id="theme-label">Dark Mode</span>
+                    </a>
+                </li>
+                <li class="item"><a href="{{ url_for('ganti_password') }}" data-testid="nav-ganti-password"><i class="fa-solid fa-key"></i><span>Ganti Password</span></a></li>
+                <li class="item"><a href="{{ url_for('logout') }}" data-testid="nav-logout"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="main-container" id="main-container">
+        <header class="main-header">
+            <div class="header-content">
+                {% if user_nama %}
+                <div class="header-user-info" data-testid="header-user-info">
+                    <i class="fa-solid fa-user-circle"></i>
+                    <span>Selamat datang, <strong>{{ user_nama }}</strong>
+                    {% if user_role %}<span class="role-pill role-{{ user_role }}">{{ user_role|upper }}</span>{% endif %}</span>
+                </div>
+                {% endif %}
+            </div>
+        </header>
+
+        <div class="content-wrapper">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages" data-testid="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}" data-testid="flash-{{ category }}">
+                            <span>{{ message }}</span>
+                            <button class="flash-close" onclick="this.parentElement.remove()" aria-label="Close">&times;</button>
+                        </div>
+                    {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Global loading overlay -->
+    <div id="global-loading-overlay" class="global-loading" data-testid="global-loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="global-loading-text">Memproses...</div>
+    </div>
+
+    <!-- Logout confirmation modal -->
+    <div class="modal-overlay" id="logout-modal-overlay" data-testid="logout-modal">
+        <div class="logout-modal">
+            <h2>Konfirmasi Logout</h2>
+            <p>Apakah Anda yakin ingin logout dari sesi ini?</p>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-cancel" id="logout-cancel-btn" data-testid="logout-cancel-btn">Batal</button>
+                <button class="modal-btn btn-confirm" id="logout-confirm-btn" data-testid="logout-confirm-btn">Ya, Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='filterin-core.js') }}"></script>
+
+    {% block scripts_extra %}{% endblock %}
+</body>
+</html>

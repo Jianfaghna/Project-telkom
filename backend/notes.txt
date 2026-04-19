@@ -1,0 +1,89 @@
+================================================================
+DOKUMENTASI APLIKASI FILTER-IN (MONITORING KENDALA & VALIDASI)
+================================================================
+Dibuat oleh: [Mahasiswa magang ASO Telkom]
+Terakhir Update: 05 Desember 2025
+
+A. DESKRIPSI SINGKAT
+--------------------
+Aplikasi ini adalah Web-Based Tools untuk mempermudah tim Validasi/Daman
+dalam mengelola data kendala, sinkronisasi BIMA, dan update status UNSC.
+Dibangun menggunakan Python (Flask), Google Sheets API, dan Database MySQL.
+
+B. PERSIAPAN SOFTWARE (PREREQUISITES)
+-------------------------------------
+Sebelum menjalankan aplikasi di laptop baru, pastikan sudah terinstall:
+1. Python (Versi 3.9 ke atas). Jangan lupa centang "Add Python to PATH" saat install.
+2. XAMPP (Untuk database MySQL).
+3. Visual Studio Code (Text Editor).
+4. Google Chrome / Edge.
+
+C. CARA INSTALASI PERTAMA KALI
+------------------------------
+1. Copy seluruh folder project ini ke laptop.
+2. Buka folder tersebut menggunakan VS Code.
+3. Buka Terminal di VS Code (Ctrl + `), lalu ketik perintah berikut untuk install library:
+   
+   pip install flask gspread google-auth pymysql pandas openpyxl xlrd lxml waitress requests
+
+4. Pastikan file "credentials.json" (Kunci Akses Google Sheet) ada di dalam folder project. 
+   JANGAN DIHAPUS! Tanpa file ini, aplikasi tidak bisa baca Google Sheet.
+
+D. SETTING DATABASE
+-------------------
+1. Nyalakan XAMPP (Start Apache & MySQL).
+2. Buka browser: http://localhost/phpmyadmin
+3. Buat database baru dengan nama: user_db
+4. Import file SQL (jika ada backup) atau buat tabel 'users' dengan kolom:
+   - id (int, primary key, auto_increment)
+   - nama (varchar)
+   - username (varchar)
+   - password (varchar)
+   
+   *Akun Default:*
+   Username: [TelkomASO]
+   Password: [TelkomASO001]
+
+E. CARA MENJALANKAN APLIKASI
+----------------------------
+CARA 1 (Untuk User Harian / Tanpa VS Code):
+1. Pastikan XAMPP sudah dinyalakan.
+2. Buka folder project, cari file bernama "RUN_APP.bat".
+3. Klik 2x file tersebut. Akan muncul layar hitam (CMD), biarkan terbuka (minimize saja).
+4. Buka browser dan akses alamat IP laptop server (misal: http://192.168.1.XX:5000).
+
+CARA 2 (Untuk Developer / Edit Kodingan):
+1. Buka VS Code.
+2. Di terminal, ketik: python app.py
+3. Akses di browser: http://127.0.0.1:5000
+
+F. LINK GOOGLE SPREADSHEET SUMBER
+---------------------------------
+Aplikasi ini terhubung ke Spreadsheet berikut:
+1. DB KENDALA & UNSC: [Link Google Sheet Kendala]
+2. SUMBER UPLOAD (Bima/Kpro): [Link Google Sheet Upload]
+3. ODP VALIDASI: [Link Google Sheet ODP]
+
+G. TROUBLESHOOTING (MASALAH UMUM)
+---------------------------------
+1. Error "MySQL Connection":
+   -> Cek apakah XAMPP sudah dinyalakan?
+
+2. Error "Spreadsheet Not Found / API Error":
+   -> Cek apakah internet lancar?
+   -> Cek apakah file "credentials.json" masih ada di folder?
+
+3. Upload Gagal:
+   -> Pastikan format file Excel sesuai (.xlsx atau .xls).
+   -> Pastikan nama kolom di Excel sesuai standar (ORDER_ID, dsb).
+
+4. Tampilan Web Rusak/Menu Hilang:
+   -> Tekan Ctrl + F5 di browser untuk hard refresh.
+
+
+pip install -r requirements.txt
+
+================================================================
+Selamat bekerja! Jika ada update fitur, edit file "app.py" (Backend) 
+atau folder "templates" (Tampilan HTML).
+================================================================

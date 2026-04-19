@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan Validasi ODP{% endblock %}
+
+{% block content %}
+<div class="summary-container">
+  <h1 class="summary-title">📋 LAPORAN VALIDASI ODP</h1>
+
+  <!-- TABEL 1 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 1: LAP VALIDASI ODP (O5:S20)</h2>
+    <div class="table-wrapper">
+      {% if header1 and data1 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header1 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data1 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 1 (O5:S20).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 2 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 2: Data Tambahan (V5:V33)</h2>
+    <div class="table-wrapper">
+      {% if header2 and data2 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header2 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data2 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 2 (V5:V33).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 3 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 3: Data Tambahan (Z5:AD26)</h2>
+    <div class="table-wrapper">
+      {% if header3 and data3 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header3 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data3 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 3 (Z5:AD26).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 4 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 4: Data Tambahan (AF5:AF26)</h2>
+    <div class="table-wrapper">
+      {% if header4 and data4 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header4 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data4 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 4 (AF5:AF26).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

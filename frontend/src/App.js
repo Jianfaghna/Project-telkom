@@ -1,52 +1,45 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { useEffect } from 'react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
+function App() {
   useEffect(() => {
-    helloWorldApi();
+    // FilterIN is served by the Flask backend at /api/*.
+    // The React shell merely redirects the root URL into the Flask app.
+    const dest = window.location.pathname.startsWith('/api')
+      ? window.location.href
+      : '/api/';
+    window.location.replace(dest);
   }, []);
 
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #eaf3ff 0%, #ffffff 100%)',
+        fontFamily: 'system-ui, sans-serif',
+        color: '#0b3d91',
+      }}
+      data-testid="filterin-redirect-loader"
+    >
+      <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: 1 }}>
+        Filter<span style={{ color: '#ff2d2d' }}>IN</span>
+      </div>
+      <div style={{ marginTop: 12, color: '#4a5b7a' }}>Memuat aplikasi…</div>
+      <div
+        style={{
+          marginTop: 24,
+          width: 42,
+          height: 42,
+          border: '4px solid rgba(11,61,145,0.15)',
+          borderTopColor: '#0b3d91',
+          borderRadius: '50%',
+          animation: 'flin-spin 0.8s linear infinite',
+        }}
+      />
+      <style>{`@keyframes flin-spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }

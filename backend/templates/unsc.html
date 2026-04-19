@@ -1,0 +1,326 @@
+{% extends 'base.html' %}
+{% block title %}Batch Edit UNSC{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <h1>DB UNSC (END STATE)</h1>
+    
+    <div class="filter-card" style="background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ddd;">
+        <h3 style="font-size: 16px; margin-top: 0; margin-bottom: 15px; color: #2c3e50;"><i class="fas fa-filter"></i> Filter Data UNSC</h3>
+        <form method="GET" action="{{ url_for('unsc') }}" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+            
+            <div style="flex: 1; min-width: 100px;">
+                <label style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 5px; display:block;">STO:</label>
+                <select name="sto" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="">- Semua -</option>
+                    <option value="MGE" {% if pagination.sto == 'MGE' %}selected{% endif %}>MGE</option>
+                    <option value="KBM" {% if pagination.sto == 'KBM' %}selected{% endif %}>KBM</option>
+                    <option value="PWJ" {% if pagination.sto == 'PWJ' %}selected{% endif %}>PWJ</option>
+                    <option value="MTY" {% if pagination.sto == 'MTY' %}selected{% endif %}>MTY</option>
+                    <option value="TEM" {% if pagination.sto == 'TEM' %}selected{% endif %}>TEM</option>
+                    <option value="WOS" {% if pagination.sto == 'WOS' %}selected{% endif %}>WOS</option>
+                </select>
+            </div>
+
+            <div style="flex: 1; min-width: 130px;">
+                <label style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 5px; display:block;">Status (Acom):</label>
+                <select name="status" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="">- Semua -</option>
+                    <option value="PENDING" {% if pagination.status == 'PENDING' %}selected{% endif %}>PENDING</option>
+                    <option value="ON PROGRESS" {% if pagination.status == 'ON PROGRESS' %}selected{% endif %}>ON PROGRESS</option>
+                    <option value="COMPLETED" {% if pagination.status == 'COMPLETED' %}selected{% endif %}>COMPLETED</option>
+                </select>
+            </div>
+
+            <div style="flex: 1; min-width: 130px;">
+                <label style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 5px; display:block;">Validasi TSEL:</label>
+                <select name="validasi" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="">- Semua -</option>
+                    <option value="LANJUT" {% if pagination.validasi == 'LANJUT' %}selected{% endif %}>LANJUT</option>
+                    <option value="CANCEL" {% if pagination.validasi == 'CANCEL' %}selected{% endif %}>CANCEL</option>
+                    <option value="PENDING" {% if pagination.validasi == 'PENDING' %}selected{% endif %}>PENDING</option>
+                </select>
+            </div>
+
+            <div style="flex: 2; min-width: 200px;">
+                <label style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 5px; display:block;">Cari (Order ID / Nama):</label>
+                <div style="position: relative;">
+                    <input type="text" name="search" value="{{ pagination.search }}" placeholder="Cari..." style="width: 100%; padding: 8px 8px 8px 35px; border: 1px solid #ccc; border-radius: 4px;">
+                    <i class="fas fa-search" style="position: absolute; left: 10px; top: 10px; color: #999;"></i>
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" class="btn-primary" style="padding: 9px 20px; border-radius: 4px; border: none; cursor: pointer; font-weight: 600; background-color: #2c3e50; color: white; height: 36px;">
+                    Filter
+                </button>
+                <a href="{{ url_for('unsc') }}" style="margin-left: 10px; color: #d9534f; text-decoration: none; font-size: 14px; font-weight: 500;">Reset</a>
+            </div>
+        </form>
+    </div>
+
+    <div style="background: #fff; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ddd;">
+        <label style="font-weight: 600; font-size: 13px; color: #555;">
+            <i class="fas fa-search-plus"></i> Ukuran Tabel:
+        </label>
+        <input type="range" id="tableZoomSlider" min="0.6" max="1.2" step="0.1" value="1" style="cursor: pointer; width: 150px;">
+        <span id="zoomValue" style="font-size: 12px; color: #777; font-weight: 500;">100%</span>
+        <button onclick="resetZoom()" style="background: #f1f1f1; border: 1px solid #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">Reset</button>
+    </div>
+
+    <form action="{{ url_for('update_unsc') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="table-container">
+            {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+            {% elif data %}
+                <div class="table-wrapper">
+                    <table class="editable-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px; text-align: center; background-color: #c0392b; color: white;">No</th>
+
+                                {% for h in header %}
+                                    {# --- LOGIKA WARNA HEADER --- #}
+                                    {% set header_class = '' %}
+                                    {% if h in ['ORDER_ID', 'DEVICE_ID', 'WONUM', 'ORDER ID FULL', 'NAME', 'ADDRESS', 'PHONE', 'ITU', 'PELANGGAN', 'LATITUDE', 'LONGITUDE', 'VALIDASI ODP (TA)', 'TINJUT ODP (TA)'] %}
+                                        {% set header_class = 'header-yellow' %}
+                                    {% elif h in ['FEEDBACK ASO', 'TGL INPUT GD ROC', 'STATUS', 'NOTES FBB'] %}
+                                        {% set header_class = 'header-green' %}
+                                    {% elif h == 'VALIDASI TSEL' %}
+                                        {% set header_class = 'header-red' %}
+                                    {% elif 'IMPORT' in h or 'UPDATE KET' in h %}
+                                        {% set header_class = 'header-blue' %}
+                                    {% elif 'DESAIN' in h or 'ALOKASI' in h or 'NAMA PROYEK' in h %}
+                                        {% set header_class = 'header-cyan' %}
+                                    {% elif 'AODM' in h or 'GOLIVE' in h %}
+                                        {% set header_class = 'header-darkblue' %}
+                                    {% endif %}
+
+                                    <th class="{{ header_class }}">{{ h }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in data %}
+                            <tr>
+                                {% set row_number = loop.index + pagination.start_index + 2 %}
+
+                                <td style="text-align: center; font-weight: bold;">
+                                    {{ loop.index + pagination.start_index }}
+                                </td>
+
+                                {% for i in range(header|length) %}
+                                    {% set current_header = header[i] %}
+                                    
+                                    <td title="{{ row[i] }}">                                   
+                                        
+                                        {% if 'STATUS' in current_header %}
+                                            <select name="{{ current_header }}[{{ row_number }}]" 
+                                                    class="feedback-select" 
+                                                    onchange="updateColor(this); handleInputChange(this);">
+                                                {% for option in unsc_status_options %}
+                                                    <option value="{{ option }}" {% if option == row[i] %}selected{% endif %}>{{ option }}</option>
+                                                {% endfor %}
+                                            </select>
+
+                                        {% elif 'VALIDASI' in current_header %}
+                                            <select name="{{ current_header }}[{{ row_number }}]" 
+                                                    class="feedback-select" 
+                                                    onchange="updateColor(this); handleInputChange(this);">
+                                                {% for option in unsc_validasi_options %}
+                                                    <option value="{{ option }}" {% if option == row[i] %}selected{% endif %}>{{ option }}</option>
+                                                {% endfor %}
+                                            </select>
+
+                                        {% else %}
+                                            {{ row[i] }}
+                                        {% endif %}
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div style="text-align: center; padding: 40px; background: #fff; border-radius: 8px;">
+                    <p style="font-size: 18px; color: #777;">Tidak ada data ditemukan.</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="controls-bar">
+             <button type="submit" class="save-btn">
+                <i class="fas fa-save"></i> Simpan
+            </button>
+        </div>
+
+    </form> 
+
+    {% if pagination and pagination.total_rows > 0 %}
+    <div class="pagination-container">
+        <div class="pagination-info">
+            Showing {{ pagination.start_index + 1 }} to {{ min(pagination.start_index + pagination.per_page, pagination.total_rows) }} of {{ pagination.total_rows }} entries
+        </div>
+        <div class="pagination-controls">
+            {% set filter_params = 'sto=' ~ pagination.sto ~ '&status=' ~ pagination.status ~ '&validasi=' ~ pagination.validasi ~ '&search=' ~ pagination.search %}
+
+            {% if pagination.current_page > 1 %}
+                <a href="{{ url_for('unsc', p=pagination.current_page - 1) }}&{{ filter_params }}">« Previous</a>
+            {% else %}
+                <span class="disabled">« Previous</span>
+            {% endif %}
+
+            {% set ns = namespace(ellipsis_printed=false) %}
+            {% set page_window = 2 %}
+
+            {% for page_num in range(1, pagination.total_pages + 1) %}
+                {% if page_num == 1 or
+                      page_num == pagination.total_pages or
+                      (page_num >= pagination.current_page - page_window and
+                       page_num <= pagination.current_page + page_window) %}
+                    {% set ns.ellipsis_printed = false %}
+                    {% if page_num == pagination.current_page %}
+                        <span class="active">{{ page_num }}</span>
+                    {% else %}
+                        <a href="{{ url_for('unsc', p=page_num) }}&{{ filter_params }}">{{ page_num }}</a>
+                    {% endif %}
+                {% else %}
+                    {% if not ns.ellipsis_printed %}
+                        <span class="ellipsis">...</span>
+                        {% set ns.ellipsis_printed = true %}
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+            
+            {% if pagination.current_page < pagination.total_pages %}
+                <a href="{{ url_for('unsc', p=pagination.current_page + 1) }}&{{ filter_params }}">Next »</a>
+            {% else %}
+                <span class="disabled">Next »</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // 1. ZOOM TABEL
+    const zoomSlider = document.getElementById('tableZoomSlider');
+    const zoomDisplay = document.getElementById('zoomValue');
+    
+    function updateTableScale(value) {
+        document.documentElement.style.setProperty('--table-scale', value);
+        if (zoomDisplay) zoomDisplay.textContent = Math.round(value * 100) + '%';
+        localStorage.setItem('tableScale', value);
+    }
+
+    if (zoomSlider) {
+        const savedScale = localStorage.getItem('tableScale');
+        if (savedScale) {
+            zoomSlider.value = savedScale;
+            updateTableScale(savedScale);
+        }
+        zoomSlider.addEventListener('input', function() {
+            updateTableScale(this.value);
+        });
+    }
+
+    window.resetZoom = function() {
+        if (zoomSlider) {
+            zoomSlider.value = 1;
+            updateTableScale(1);
+        }
+    };
+
+    // 2. HANDLER INPUT
+    function handleInputChange(inputElement) {
+        const row = inputElement.closest('tr');
+        row.classList.add('is-dirty');
+        const saveBar = document.querySelector('.controls-bar');
+        if (saveBar) saveBar.style.display = 'block';
+    }
+
+    // 3. WARNA STATUS
+    function updateColor(selectElement) {
+        if (!selectElement) return;
+        const value = selectElement.value.toUpperCase(); 
+        selectElement.classList.remove('status-red', 'status-green', 'status-blue', 'status-yellow');
+
+        if (value.includes('CANCEL') || value.includes('REQ') || value.includes('TIDAK') || value.includes('BATAL') || value.includes('ODP')) {
+            selectElement.classList.add('status-red');
+        } else if (value.includes('LANJUT') || value.includes('COMPLETED') || value.includes('DONE') || value.includes('AKTIF') || value.includes('ACTIVE')) {
+            selectElement.classList.add('status-green');
+        } else if (value.includes('ON PROGRESS') || value.includes('VERIVIKASI')) {
+            selectElement.classList.add('status-blue');
+        } else if (value.includes('PENDING') || value.includes('WAITING') || value.includes('ANTRI')) {
+            selectElement.classList.add('status-yellow');
+        }
+    }
+
+    // 4. AUTO-UPDATE (REAL-TIME POLLING)
+    let isEditing = false;
+    const tableContainer = document.querySelector('.table-container');
+    if (tableContainer) {
+        tableContainer.addEventListener('focusin', () => { isEditing = true; });
+        tableContainer.addEventListener('focusout', () => { isEditing = false; });
+        tableContainer.addEventListener('click', (e) => {
+            if (e.target.tagName === 'SELECT') isEditing = true;
+        });
+    }
+
+    function fetchUpdates() {
+        if (isEditing || document.querySelector('.is-dirty')) return;
+
+        const params = new URLSearchParams(window.location.search);
+        
+        fetch(`/api/unsc_data?${params.toString()}`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.data) {
+                    updateTableRows(result.data);
+                }
+            })
+            .catch(err => console.error("Gagal auto-update UNSC:", err));
+    }
+
+    function updateTableRows(newData) {
+        const tbody = document.querySelector('.editable-table tbody');
+        const rows = tbody.querySelectorAll('tr');
+
+        newData.forEach((rowData, index) => {
+            if (rows[index]) {
+                const cells = rows[index].querySelectorAll('td');
+                // [UPDATE] Offset +1 karena kolom No baru ditambahkan
+                rowData.forEach((cellData, colIndex) => {
+                    const cell = cells[colIndex + 1]; 
+                    if (!cell) return;
+
+                    const select = cell.querySelector('select');
+                    if (select) {
+                        if (select.value !== cellData) {
+                            select.value = cellData;
+                            updateColor(select);
+                        }
+                    } else {
+                        if (cell.innerText !== cellData) cell.innerText = cellData;
+                    }
+                });
+            }
+        });
+        
+        // Cek fungsi highlight global
+        if (window.highlightNewRows) window.highlightNewRows();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const allSelects = document.querySelectorAll('.feedback-select');
+        allSelects.forEach(function(select) {
+            updateColor(select);
+        });
+
+        // Polling setiap 10 detik
+        setInterval(fetchUpdates, 10000);
+    });
+</script>
+{% endblock %}

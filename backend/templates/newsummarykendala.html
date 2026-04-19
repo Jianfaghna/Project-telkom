@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan NEW SUMMARY KENDALA{% endblock %}
+
+{% block content %}
+<div class="summary-container">
+  <h1 class="summary-title">📗 LAPORAN NEW SUMMARY KENDALA</h1>
+
+  <!-- TABEL 1 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 1 (B6:H25)</h2>
+    <div class="table-wrapper">
+      {% if header1 and data1 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header1 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data1 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 1 (B6:H25).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 2 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 2 (K6:P25)</h2>
+    <div class="table-wrapper">
+      {% if header2 and data2 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header2 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data2 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 2 (K6:P25).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 3 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 3 (S6:AA25)</h2>
+    <div class="table-wrapper">
+      {% if header3 and data3 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header3 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data3 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 3 (S6:AA25).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 4 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 4 (B45:E60)</h2>
+    <div class="table-wrapper">
+      {% if header4 and data4 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header4 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data4 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 4 (B45:E60).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 5 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 5 (K45:O60)</h2>
+    <div class="table-wrapper">
+      {% if header5 and data5 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header5 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data5 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 5 (K45:O60).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 6 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 6 (S45:X60)</h2>
+    <div class="table-wrapper">
+      {% if header6 and data6 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header6 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data6 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 6 (S45:X60).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 7 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 7 (B69:H85)</h2>
+    <div class="table-wrapper">
+      {% if header7 and data7 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header7 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data7 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 7 (B69:H85).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 8 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 8 (L68:S85)</h2>
+    <div class="table-wrapper">
+      {% if header8 and data8 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header8 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data8 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel 8 (L68:S85).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

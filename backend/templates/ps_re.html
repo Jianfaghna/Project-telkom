@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block title %}Laporan PS RE{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <div class="report-header">
+        <h1>HOUSEKEEPING - AO</h1>
+        <p>Last updated: {{ timestamp }}</p>
+    </div>
+
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% else %}
+        <div class="report-table-wrapper">
+            <table class="report-table">
+                <tbody>
+                    {# Loop pertama adalah untuk setiap BARIS (list) #}
+                    {% for row in report_data %}
+                    <tr>
+                        {# Loop kedua adalah untuk setiap SEL (string) di dalam baris #}
+                        {% for cell in row %}
+                            <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - FilterIN</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='filterin-modern.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body.login-page-body {
+        background: linear-gradient(135deg, #0b3d91 0%, #1e40af 50%, #2563eb 100%);
+        min-height: 100vh;
+        display: flex; justify-content: center; align-items: center;
+        padding: 20px;
+    }
+    body.login-page-body::before {
+        content: ''; position: fixed; inset: 0;
+        background-image: radial-gradient(circle at 20% 80%, rgba(255,45,45,0.15) 0%, transparent 50%),
+                          radial-gradient(circle at 80% 20%, rgba(26,188,156,0.15) 0%, transparent 50%);
+        pointer-events: none;
+    }
+    .login-box {
+        background: #fff;
+        width: 400px; max-width: 100%;
+        padding: 36px 38px;
+        border-radius: 16px;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.35);
+        text-align: center;
+        position: relative;
+        animation: lb-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes lb-in { from { opacity:0; transform: translateY(20px); } to { opacity:1; transform: translateY(0); } }
+    .login-header-container {
+        display: flex; align-items: center; justify-content: center;
+        gap: 18px; margin-bottom: 22px;
+    }
+    .vertical-divider { width: 2px; height: 48px; background: #d1d5db; border-radius: 2px; flex-shrink: 0; }
+    .logo-img { height: 62px; width: auto; max-width: 110px; object-fit: contain; }
+    .brand-text {
+        font-family: 'Space Grotesk', 'Poppins', sans-serif;
+        font-size: 30px; font-weight: 700; color: #0b3d91;
+        letter-spacing: -0.5px; line-height: 1; white-space: nowrap;
+    }
+    .brand-highlight { color: #ff2d2d; }
+    .login-subtitle {
+        font-weight: 500; color: #64748b; font-size: 14px;
+        margin-bottom: 28px; letter-spacing: 0.3px;
+    }
+    .field-wrap { position: relative; margin-bottom: 16px; }
+    .field-wrap .input-icon {
+        position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+        color: #94a3b8; font-size: 16px; pointer-events: none;
+    }
+    .field-wrap input {
+        width: 100%; box-sizing: border-box;
+        padding: 12px 44px 12px 42px;
+        border: 1.5px solid #e2e8f0; border-radius: 10px;
+        font-size: 14px; color: #1e293b;
+        font-family: 'Poppins', sans-serif;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field-wrap input:focus {
+        outline: none; border-color: #0b3d91;
+        box-shadow: 0 0 0 3px rgba(11,61,145,0.15);
+    }
+    .toggle-pw {
+        position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+        background: transparent; border: none; cursor: pointer;
+        color: #94a3b8; padding: 6px; border-radius: 4px;
+    }
+    .toggle-pw:hover { color: #0b3d91; }
+    .login-btn {
+        width: 100%; padding: 13px;
+        font-size: 15px; font-weight: 600;
+        color: #fff;
+        background: linear-gradient(135deg, #0b3d91, #1e40af);
+        border: none; border-radius: 10px;
+        cursor: pointer; margin-top: 10px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .login-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(11,61,145,0.4); }
+    .login-btn:active { transform: translateY(0); }
+    .link { margin-top: 22px; font-size: 13px; color: #64748b; line-height: 1.6; }
+    .link a { color: #0b3d91; font-weight: 600; text-decoration: none; }
+    .login-footer-note {
+        margin-top: 20px; padding-top: 18px;
+        border-top: 1px solid #e2e8f0;
+        font-size: 11px; color: #94a3b8;
+    }
+  </style>
+</head>
+<body class="login-page-body">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+            {% for category, message in messages %}
+                <div class="flash {{ category }}" data-testid="flash-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="login-box" data-testid="login-box">
+        <div class="login-header-container">
+            <img src="{{ url_for('static', filename='img/logo_telkom.png') }}" alt="Telkom Indonesia" class="logo-img">
+            <div class="vertical-divider"></div>
+            <div class="brand-text">Filter<span class="brand-highlight">IN</span></div>
+        </div>
+
+        <div class="login-subtitle">Monitoring Kendala &amp; Validasi ASO Telkom Magelang</div>
+
+        <form method="POST" action="{{ url_for('login') }}" data-testid="login-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="field-wrap">
+                <i class="fas fa-user input-icon"></i>
+                <input type="text" name="username" placeholder="Username" required autofocus data-testid="login-username">
+            </div>
+
+            <div class="field-wrap">
+                <i class="fas fa-lock input-icon"></i>
+                <input type="password" name="password" id="pw" placeholder="Password" required data-testid="login-password">
+                <button type="button" class="toggle-pw" onclick="togglePw()" data-testid="toggle-password" aria-label="Show password">
+                    <i id="pw-icon" class="fas fa-eye"></i>
+                </button>
+            </div>
+
+            <button type="submit" class="login-btn" data-testid="login-submit">
+                Masuk <i class="fas fa-arrow-right"></i>
+            </button>
+        </form>
+
+        <div class="link">
+            Butuh bantuan akses? <br>
+            Chat admin di <a href="https://t.me/FilterInBot" target="_blank" rel="noopener">Telegram</a>
+        </div>
+
+        <div class="login-footer-note">
+            &copy; 2026 Telkom ASO Magelang &middot; Built by Unit Kendala
+        </div>
+    </div>
+
+    <script>
+        function togglePw() {
+            const p = document.getElementById('pw');
+            const i = document.getElementById('pw-icon');
+            if (p.type === 'password') { p.type = 'text'; i.classList.replace('fa-eye', 'fa-eye-slash'); }
+            else { p.type = 'password'; i.classList.replace('fa-eye-slash', 'fa-eye'); }
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.flash').forEach((f, i) => {
+                setTimeout(() => { f.style.opacity = 0; setTimeout(() => f.remove(), 400); }, 4000 + i*300);
+            });
+        });
+    </script>
+</body>
+</html>

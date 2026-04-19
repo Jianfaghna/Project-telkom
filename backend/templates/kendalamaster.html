@@ -1,0 +1,436 @@
+{% extends 'base.html' %}
+{% block title %}DB Kendala Master - FilterIN{% endblock %}
+
+{% block content %}
+<style>
+    .automation-container { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:20px; }
+</style>
+
+<div class="main-content" data-testid="kendala-master-page">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:4px;">
+        <h1 style="margin:0; font-size:22px; color:var(--text);">
+            <i class="fa-solid fa-database"></i> DB KENDALA (MASTER)
+        </h1>
+        <div style="font-size:13px; color:var(--text-muted);">
+            <i class="fa-solid fa-clock"></i> Total: <strong>{{ pagination.total_rows or 0 }}</strong> order
+        </div>
+    </div>
+
+    <!-- NEW DATA NOTIFICATION -->
+    {% if total_new_today and total_new_today > 0 %}
+    <div class="new-data-banner" data-testid="new-data-banner">
+        <div class="ndb-icon"><i class="fa-solid fa-bell"></i></div>
+        <div class="ndb-text">
+            <strong>{{ total_new_today }} data baru baru saja disinkronkan!</strong>
+            <small>Data baru ditandai dengan <span class="badge-new">NEW</span> &amp; garis oranye di sebelah kiri baris.</small>
+        </div>
+        <div class="ndb-actions">
+            {% if not pagination.new_only %}
+                <a href="{{ url_for('kendala_master', new_only='1') }}" class="ndb-btn" data-testid="btn-show-new-only">
+                    <i class="fa-solid fa-filter"></i> Lihat Data Baru
+                </a>
+            {% else %}
+                <a href="{{ url_for('kendala_master') }}" class="ndb-btn" data-testid="btn-show-all">
+                    <i class="fa-solid fa-list"></i> Lihat Semua Data
+                </a>
+            {% endif %}
+            <button class="ndb-btn secondary" onclick="markNewAsSeen()" data-testid="btn-mark-seen">
+                <i class="fa-solid fa-check"></i> Tandai Sudah Dibaca
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- SYNC + MOVE AUTOMATION -->
+    <div class="automation-container">
+        <div class="sync-card-modern sync">
+            <div class="sci"><i class="fas fa-sync-alt"></i></div>
+            <div class="sct" style="flex:1;">
+                <h3>Sinkronisasi BIMA</h3>
+                <p>Tarik data baru dari <code>IMPORT BIMA (FRESH)</code> ke sheet master ini.</p>
+                <button id="syncButton" class="automation-btn btn-primary" onclick="triggerSyncBima()" data-testid="btn-sync-bima">
+                    <i class="fas fa-sync-alt"></i> Sinkronkan Data BIMA
+                </button>
+                <div id="syncStatus" class="automation-status"></div>
+            </div>
+        </div>
+        <div class="sync-card-modern move">
+            <div class="sci"><i class="fas fa-arrow-right"></i></div>
+            <div class="sct" style="flex:1;">
+                <h3>Otomatisasi UNSC</h3>
+                <p>Pindahkan data <code>VERIFIKASI UNSC</code> + <code>BELUM ADA</code> ke sheet UNSC.</p>
+                <button id="moveUnscButton" class="automation-btn btn-success" onclick="triggerMoveUnsc()" data-testid="btn-move-unsc">
+                    <i class="fas fa-arrow-right"></i> Pindahkan ke UNSC
+                </button>
+                <div id="moveUnscStatus" class="automation-status"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FILTER BAR -->
+    <div class="filter-card" style="background: var(--surface); padding: 16px 20px; margin-bottom: 14px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border:1px solid var(--border);">
+        <form method="GET" action="{{ url_for('kendala_master') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;" data-testid="filter-form">
+            <div style="flex:1; min-width:110px;">
+                <label style="font-weight:600; font-size:12px; color:var(--text-muted); margin-bottom:4px; display:block;">STO</label>
+                <select name="sto" data-testid="filter-sto">
+                    <option value="">-- Semua --</option>
+                    <option value="MGE" {% if pagination.sto == 'MGE' %}selected{% endif %}>MGE (Magelang)</option>
+                    <option value="KBM" {% if pagination.sto == 'KBM' %}selected{% endif %}>KBM (Kebumen)</option>
+                    <option value="PWJ" {% if pagination.sto == 'PWJ' %}selected{% endif %}>PWJ (Purworejo)</option>
+                    <option value="MTY" {% if pagination.sto == 'MTY' %}selected{% endif %}>MTY (Muntilan)</option>
+                    <option value="TEM" {% if pagination.sto == 'TEM' %}selected{% endif %}>TEM (Temanggung)</option>
+                    <option value="WOS" {% if pagination.sto == 'WOS' %}selected{% endif %}>WOS (Wonosobo)</option>
+                </select>
+            </div>
+            <div style="flex:1; min-width:140px;">
+                <label style="font-weight:600; font-size:12px; color:var(--text-muted); margin-bottom:4px; display:block;">Status Resume</label>
+                <select name="status" data-testid="filter-status">
+                    <option value="">-- Semua --</option>
+                    <option value="WORKFAIL" {% if pagination.status == 'WORKFAIL' %}selected{% endif %}>WORKFAIL</option>
+                    <option value="FALLOUT" {% if pagination.status == 'FALLOUT' %}selected{% endif %}>FALLOUT</option>
+                    <option value="INVALID SURVEY" {% if pagination.status == 'INVALID SURVEY' %}selected{% endif %}>INVALID SURVEY</option>
+                </select>
+            </div>
+            <div style="flex:1; min-width:150px;">
+                <label style="font-weight:600; font-size:12px; color:var(--text-muted); margin-bottom:4px; display:block;">Feedback ASO</label>
+                <select name="feedback" data-testid="filter-feedback">
+                    <option value="">-- Semua --</option>
+                    {% for option in feedback_options %}
+                        <option value="{{ option }}" {% if pagination.feedback == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:2; min-width:220px;">
+                <label style="font-weight:600; font-size:12px; color:var(--text-muted); margin-bottom:4px; display:block;">Cari (WONUM/Order ID/Device)</label>
+                <div style="position: relative;">
+                    <input type="text" name="search" value="{{ pagination.search }}" placeholder="Ketik nomor order..." style="width:100%; padding:8px 8px 8px 32px;" data-testid="filter-search">
+                    <i class="fas fa-search" style="position: absolute; left: 10px; top: 10px; color: #999;"></i>
+                </div>
+            </div>
+            {% if pagination.new_only %}
+                <input type="hidden" name="new_only" value="1">
+            {% endif %}
+            <div style="display:flex; gap:8px;">
+                <button type="submit" class="toolbar-btn active" data-testid="btn-apply-filter">
+                    <i class="fa-solid fa-filter"></i> Terapkan
+                </button>
+                <a href="{{ url_for('kendala_master') }}" class="toolbar-btn" data-testid="btn-reset-filter" style="color:var(--telkom-red);">
+                    <i class="fa-solid fa-xmark"></i> Reset
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar-row" data-testid="kendala-toolbar">
+        <button type="button" class="toolbar-btn" id="btn-quick-mode" onclick="toggleQuickMode()" data-testid="btn-quick-mode">
+            <i class="fa-solid fa-bolt"></i> Mode Cepat (kolom kerja saja)
+        </button>
+
+        <div class="col-chooser">
+            <button type="button" class="col-chooser-btn" onclick="toggleColChooser(event)" data-testid="btn-col-chooser">
+                <i class="fa-solid fa-table-columns"></i> Pilih Kolom
+                <i class="fa-solid fa-chevron-down" style="font-size:10px;"></i>
+            </button>
+            <div class="col-chooser-panel" id="col-chooser-panel">
+                <div class="col-chooser-actions">
+                    <button type="button" onclick="cc_selectAll()">Semua</button>
+                    <button type="button" onclick="cc_selectEssential()" class="primary">Hanya Kerja</button>
+                    <button type="button" onclick="cc_selectNone()">Kosong</button>
+                </div>
+                <div id="col-chooser-items"></div>
+            </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <span class="chip-count" data-testid="chip-total">{{ pagination.total_rows or 0 }} order</span>
+        {% if pagination.new_only %}
+            <span class="chip-count" style="background:#fef3c7; color:#92400e;">
+                <i class="fa-solid fa-bell"></i> Menampilkan Data Baru
+            </span>
+        {% endif %}
+
+        <button type="button" class="toolbar-btn" onclick="window.location.reload()" title="Refresh" data-testid="btn-refresh">
+            <i class="fa-solid fa-rotate"></i> Refresh
+        </button>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-container" style="overflow-x:auto;">
+        {% if error %}
+            <div class="alert alert-danger" style="padding:14px; background:#fee2e2; color:#991b1b; border-radius:6px;" data-testid="error-alert">
+                <i class="fa-solid fa-triangle-exclamation"></i> {{ error }}
+            </div>
+        {% elif data %}
+            <table class="editable-table" id="kendala-table">
+                <thead>
+                    <tr>
+                        <th class="col-sticky-1" style="width:45px; left:0;">#</th>
+                        {% for h in header %}
+                            {% set header_class = '' %}
+                            {% if h in ['NOTES GDOC LAPORAN TATI', 'UPDATE TATI', 'TANGGAL IZIN OK (TA)', 'IS ORDER HI?', 'DONE TATI', 'STATUS ORDER BY TL', 'NOTES TL'] %}
+                                {% set header_class = 'header-yellow' %}
+                            {% elif h in ['FEEDBACK ASO', 'TGL FEEDBACK', 'NOTES ASO'] %}
+                                {% set header_class = 'header-cream' %}
+                            {% elif h in ['FEEDBACK TSEL', 'TIME', 'NOTES TSEL'] %}
+                                {% set header_class = 'header-orange' %}
+                            {% elif h in ['KET TAMBAHAN', 'TYPE ORDER', 'CEK DB UNSC', 'STATUS', 'KATEGORI', 'STATUS_UIM', 'PERIODE'] %}
+                                {% set header_class = 'header-grey' %}
+                            {% endif %}
+                            <th class="{{ header_class }} col-h-{{ loop.index0 }} {% if h == 'ORDER_ID' %}col-order-id{% endif %}" data-col="{{ h }}">
+                                {{ h }}
+                            </th>
+                        {% endfor %}
+                        <th class="col-actions" style="right:0; min-width:80px;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in data %}
+                    {% set loop_index = loop.index0 %}
+                    {% set row_num = sheet_rows[loop_index] %}
+                    {% set is_new = is_new_flags[loop_index] %}
+                    {% set order_id_idx = header.index('ORDER_ID') if 'ORDER_ID' in header else 1 %}
+                    {% set order_id = row[order_id_idx] if order_id_idx < row|length else '' %}
+                    {% set lock = active_locks.get(order_id|string) %}
+                    <tr class="{% if is_new %}is-new-row{% endif %}" data-order-id="{{ order_id }}" data-row-num="{{ row_num }}" data-testid="row-{{ order_id }}">
+                        <td class="col-sticky-1" style="text-align:center; font-weight:700; left:0; color:var(--text-muted);">
+                            {{ pagination.start_index + loop_index + 1 }}
+                            {% if is_new %}<br><span class="badge-new" title="Data baru dari sync">NEW</span>{% endif %}
+                        </td>
+                        {% for i in range(header|length) %}
+                            {% set current_header = header[i] %}
+                            {% set cell_val = row[i] if i < row|length else '' %}
+                            <td class="col-c-{{ i }} {% if current_header == 'ORDER_ID' %}col-order-id{% endif %}" title="{{ cell_val }}" data-col="{{ current_header }}">
+                                {{ cell_val }}
+                            </td>
+                        {% endfor %}
+                        <td class="col-actions" style="right:0;">
+                            {% if not order_id or not order_id|trim %}
+                                <span style="color:#cbd5e1; font-size:12px;">—</span>
+                            {% elif lock and lock.locked_by != user.username %}
+                                <button class="btn-quick-edit locked" title="Dikunci oleh {{ lock.nama or lock.locked_by }} ({{ lock.locked_at }})" data-testid="btn-edit-locked-{{ order_id }}">
+                                    <i class="fa-solid fa-lock"></i>
+                                    <span class="lock-indicator" title="Sedang diedit">!</span>
+                                </button>
+                            {% else %}
+                                <button class="btn-quick-edit" onclick="window.openQuickEdit({{ row_num }}, '{{ order_id }}')" title="Edit Cepat" data-testid="btn-edit-{{ order_id }}">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div style="text-align:center; padding:40px; background:var(--surface); border-radius:var(--radius-md);" data-testid="empty-state">
+                <i class="fa-solid fa-inbox" style="font-size:48px; color:#cbd5e1;"></i>
+                <p style="font-size:16px; color:var(--text-muted); margin-top:14px;">Tidak ada data ditemukan sesuai filter.</p>
+                <a href="{{ url_for('kendala_master') }}" class="toolbar-btn" style="margin-top:10px;">Reset Filter</a>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- PAGINATION -->
+    {% if pagination and pagination.total_rows > 0 %}
+    <div class="pagination-container" style="margin-top:16px;" data-testid="pagination">
+        <div class="pagination-info" style="color:var(--text-muted);">
+            Showing {{ pagination.start_index + 1 }} to {{ min(pagination.start_index + pagination.per_page, pagination.total_rows) }} of {{ pagination.total_rows }} entries
+        </div>
+        <div class="pagination-controls">
+            {% set qs = '&sto=' ~ pagination.sto ~ '&status=' ~ pagination.status ~ '&feedback=' ~ pagination.feedback ~ '&search=' ~ pagination.search ~ '&new_only=' ~ pagination.new_only %}
+            {% if pagination.current_page > 1 %}
+                <a href="{{ url_for('kendala_master', p=pagination.current_page - 1) }}{{ qs }}" data-testid="page-prev">« Prev</a>
+            {% else %}
+                <span class="disabled">« Prev</span>
+            {% endif %}
+            {% set ns = namespace(e=false) %}
+            {% for pn in range(1, pagination.total_pages + 1) %}
+                {% if pn == 1 or pn == pagination.total_pages or (pn >= pagination.current_page - 2 and pn <= pagination.current_page + 2) %}
+                    {% set ns.e = false %}
+                    {% if pn == pagination.current_page %}<span class="active">{{ pn }}</span>
+                    {% else %}<a href="{{ url_for('kendala_master', p=pn) }}{{ qs }}">{{ pn }}</a>{% endif %}
+                {% else %}
+                    {% if not ns.e %}<span class="ellipsis">...</span>{% set ns.e = true %}{% endif %}
+                {% endif %}
+            {% endfor %}
+            {% if pagination.current_page < pagination.total_pages %}
+                <a href="{{ url_for('kendala_master', p=pagination.current_page + 1) }}{{ qs }}" data-testid="page-next">Next »</a>
+            {% else %}
+                <span class="disabled">Next »</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // Quick Edit init
+    window.initQuickEdit({
+        feedback_options: {{ feedback_options|tojson }},
+        actual_options: {{ actual_options|tojson }},
+    });
+
+    const HEADERS = {{ header|tojson }};
+    const ESSENTIAL_COLS = ['ORDER_ID','WONUM','STO','DATEL','STATUS_RESUME','SUBERRORCODE','ENGINEERMEMO','ACTUAL KENDALA','FEEDBACK ASO','TGL FEEDBACK','NOTES ASO','IS_ACTIVE_KENDALA','LAMA WO','UMUR KENDALA','CEK DB UNSC'];
+
+    // ---------- Column Chooser ----------
+    const CC_KEY = 'filterin-kendala-cols-v1';
+    function cc_state() {
+        try { return JSON.parse(localStorage.getItem(CC_KEY) || 'null') || null; } catch(e){ return null; }
+    }
+    function cc_save(arr) { localStorage.setItem(CC_KEY, JSON.stringify(arr)); }
+    function cc_getVisible() {
+        const s = cc_state();
+        if (!s) return HEADERS.slice();
+        return HEADERS.filter(h => s.includes(h));
+    }
+    function cc_apply() {
+        const visible = cc_getVisible();
+        HEADERS.forEach((h, i) => {
+            document.querySelectorAll('.col-c-'+i+', .col-h-'+i).forEach(el => {
+                el.classList.toggle('col-hidden', !visible.includes(h));
+            });
+        });
+    }
+    function cc_render() {
+        const box = document.getElementById('col-chooser-items');
+        const visible = cc_getVisible();
+        box.innerHTML = HEADERS.map(h => `
+            <label><input type="checkbox" ${visible.includes(h) ? 'checked' : ''} onchange="cc_toggle('${h.replace(/'/g,"\\'")}', this.checked)"> ${h}</label>
+        `).join('');
+    }
+    window.cc_toggle = function (h, on) {
+        const cur = cc_getVisible();
+        let next = on ? Array.from(new Set([...cur, h])) : cur.filter(x => x !== h);
+        cc_save(next); cc_apply();
+    };
+    window.cc_selectAll = function () { cc_save(HEADERS.slice()); cc_render(); cc_apply(); };
+    window.cc_selectEssential = function () {
+        const keep = HEADERS.filter(h => ESSENTIAL_COLS.includes(h));
+        cc_save(keep); cc_render(); cc_apply();
+    };
+    window.cc_selectNone = function () { cc_save([]); cc_render(); cc_apply(); };
+    window.toggleColChooser = function (e) {
+        e.stopPropagation();
+        document.getElementById('col-chooser-panel').classList.toggle('show');
+    };
+    document.addEventListener('click', (e) => {
+        const panel = document.getElementById('col-chooser-panel');
+        if (panel && panel.classList.contains('show') && !e.target.closest('.col-chooser')) {
+            panel.classList.remove('show');
+        }
+    });
+
+    // ---------- Quick Mode toggle ----------
+    const QM_KEY = 'filterin-quick-mode';
+    window.toggleQuickMode = function () {
+        const cur = localStorage.getItem(QM_KEY) === '1';
+        const next = !cur;
+        localStorage.setItem(QM_KEY, next ? '1' : '0');
+        document.getElementById('btn-quick-mode').classList.toggle('active', next);
+        if (next) cc_selectEssential();
+        else cc_selectAll();
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        cc_render();
+        const quickMode = localStorage.getItem(QM_KEY) === '1';
+        document.getElementById('btn-quick-mode').classList.toggle('active', quickMode);
+        if (!cc_state() && quickMode) cc_selectEssential();
+        else cc_apply();
+    });
+
+    // ---------- Sync & Move ----------
+    async function triggerSyncBima() {
+        if (!confirm('Sinkronisasi BIMA akan menarik data dari IMPORT BIMA (FRESH). Lanjutkan?')) return;
+        const btn = document.getElementById('syncButton');
+        const st = document.getElementById('syncStatus');
+        btn.disabled = true;
+        window.showLoading('Sinkronisasi BIMA ke DB Kendala…');
+        st.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+        try {
+            const res = await fetch('/api/sync-bima', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                st.innerHTML = `<span style="color:#059669;"><i class="fas fa-check"></i> ${data.message}</span>`;
+                window.toast(`Sync OK: Update ${data.updates || 0}, Tambah ${data.appends || 0}`, 'success');
+                if (data.appends > 0) {
+                    setTimeout(() => { window.location.href = '?new_only=1'; }, 1200);
+                }
+            } else {
+                st.innerHTML = `<span style="color:#dc2626;"><i class="fas fa-xmark"></i> ${data.message}</span>`;
+                window.toast('Gagal sync: ' + data.message, 'error');
+            }
+        } catch (e) {
+            st.innerHTML = `<span style="color:#dc2626;">Error: ${e.message}</span>`;
+        } finally {
+            btn.disabled = false;
+            window.hideLoading();
+        }
+    }
+    window.triggerSyncBima = triggerSyncBima;
+
+    async function triggerMoveUnsc() {
+        if (!confirm('Data VERIFIKASI UNSC + BELUM ADA akan dipindahkan ke sheet UNSC. Lanjutkan?')) return;
+        const btn = document.getElementById('moveUnscButton');
+        const st = document.getElementById('moveUnscStatus');
+        btn.disabled = true;
+        window.showLoading('Memindahkan data ke UNSC…');
+        st.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+        try {
+            const res = await fetch('/api/move-to-unsc', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                st.innerHTML = `<span style="color:#059669;"><i class="fas fa-check"></i> ${data.message}</span>`;
+                window.toast(data.message, 'success');
+            } else {
+                st.innerHTML = `<span style="color:#dc2626;">${data.message}</span>`;
+                window.toast('Gagal: ' + data.message, 'error');
+            }
+        } catch (e) {
+            st.innerHTML = `<span style="color:#dc2626;">Error: ${e.message}</span>`;
+        } finally {
+            btn.disabled = false;
+            window.hideLoading();
+        }
+    }
+    window.triggerMoveUnsc = triggerMoveUnsc;
+
+    // ---------- Mark new as seen ----------
+    window.markNewAsSeen = async function () {
+        try {
+            await fetch('/api/mark_new_seen', { method: 'POST' });
+            window.toast('Data baru ditandai sudah dibaca', 'success');
+            setTimeout(() => window.location.reload(), 800);
+        } catch (e) { window.toast('Error: '+e.message, 'error'); }
+    };
+
+    // ---------- Refresh locks every 15s ----------
+    async function refreshLocks() {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const res = await (await fetch('/api/kendala_data?' + params.toString())).json();
+            if (!res.active_locks) return;
+            document.querySelectorAll('tr[data-order-id]').forEach(tr => {
+                const oid = tr.getAttribute('data-order-id');
+                const btnCell = tr.querySelector('.col-actions');
+                if (!btnCell) return;
+                const lk = res.active_locks[oid];
+                const rowNum = tr.getAttribute('data-row-num');
+                const me = '{{ user.username }}';
+                if (lk && lk.locked_by !== me) {
+                    btnCell.innerHTML = `<button class="btn-quick-edit locked" title="Dikunci oleh ${lk.nama || lk.locked_by} (${lk.locked_at})">
+                        <i class="fa-solid fa-lock"></i><span class="lock-indicator">!</span></button>`;
+                } else {
+                    btnCell.innerHTML = `<button class="btn-quick-edit" onclick="window.openQuickEdit(${rowNum}, '${oid}')" title="Edit Cepat">
+                        <i class="fa-solid fa-pen-to-square"></i></button>`;
+                }
+            });
+        } catch(_) {}
+    }
+    setInterval(refreshLocks, 15000);
+</script>
+
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex justify-center gap-10 mt-10">
+  <!-- Tabel kiri -->
+  <table class="table-auto border-collapse border border-gray-300 shadow-lg text-sm">
+    <thead class="bg-blue-800 text-white">
+      <tr>
+        <th class="px-4 py-2 text-left">KATEGORI</th>
+        <th class="px-4 py-2 text-center">STATUS</th>
+        <th class="px-4 py-2 text-center">JUMLAH</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in tabel1 %}
+      <tr class="{% if row.STATUS == 'BAD' %}bg-red-200{% elif row.STATUS == 'GOOD' %}bg-green-200{% else %}bg-white{% endif %}">
+        <td class="px-4 py-2">{{ row.KATEGORI }}</td>
+        <td class="px-4 py-2 text-center">{{ row.STATUS }}</td>
+        <td class="px-4 py-2 text-center">{{ row.JUMLAH }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Tabel kanan -->
+  <table class="table-auto border-collapse border border-gray-300 shadow-lg text-sm">
+    <thead class="bg-blue-800 text-white">
+      <tr>
+        <th class="px-4 py-2 text-left">KATEGORI</th>
+        <th class="px-4 py-2 text-center">STATUS</th>
+        <th class="px-4 py-2 text-center">JUMLAH</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in tabel2 %}
+      <tr class="{% if row.STATUS == 'BAD' %}bg-red-200{% elif row.STATUS == 'GOOD' %}bg-green-200{% else %}bg-white{% endif %}">
+        <td class="px-4 py-2">{{ row.KATEGORI }}</td>
+        <td class="px-4 py-2 text-center">{{ row.STATUS }}</td>
+        <td class="px-4 py-2 text-center">{{ row.JUMLAH }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

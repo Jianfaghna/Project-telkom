@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Summary{% endblock %}
+
+{% block content %}
+<div class="summary-container">
+  <h1 class="summary-title">📊 RECAP REPORT</h1>
+
+  <!-- TABEL 1 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 1</h2>
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header1 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data1 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TABEL 2 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 2</h2>
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header2 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data2 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TABEL 3 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 3</h2>
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header3 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data3 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TABEL 4 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 4</h2>
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header4 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data4 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TABEL 5 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 5</h2>
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header5 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data5 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TABEL 6 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 6</h2>
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header6 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data6 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TABEL 7 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel 7</h2>
+    <div class="table-wrapper">
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header7 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data7 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

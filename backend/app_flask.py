@@ -1,0 +1,1500 @@
+"""
+FilterIN - Flask application (refactored)
+Dibuat untuk Unit Kendala Telkom Magelang
+Mount: /api/*  (di-wrap oleh server.py sebagai ASGI)
+"""
+import os
+import re
+import json
+import time
+import uuid
+import hashlib
+import traceback
+from datetime import datetime, timedelta
+from functools import wraps
+from contextlib import contextmanager
+from pathlib import Path
+
+from dotenv import load_dotenv
+import pymysql
+import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
+from flask import (
+    Flask, render_template, request, redirect, session, url_for,
+    flash, jsonify, g, abort, make_response, send_from_directory
+)
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
+from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
+# =====================================================================
+# CONFIG
+# =====================================================================
+MYSQL = dict(
+    host=os.environ['MYSQL_HOST'],
+    port=int(os.environ.get('MYSQL_PORT', 3306)),
+    user=os.environ['MYSQL_USER'],
+    password=os.environ['MYSQL_PASSWORD'],
+    database=os.environ['MYSQL_DB'],
+    cursorclass=pymysql.cursors.DictCursor,
+    autocommit=False,
+    charset='utf8mb4',
+)
+
+SPREADSHEET_IDS = {
+    'upload':  os.environ['SPREADSHEET_UPLOAD'],
+    'kendala': os.environ['SPREADSHEET_KENDALA'],
+    'ODP':     os.environ['SPREADSHEET_ODP'],
+    'PSRE':    os.environ['SPREADSHEET_PSRE'],
+}
+
+SHEET_NAMES = {
+    'upload':  {'04': 'BIMA MASTER', '05': 'KPRO', '06': 'BIMA'},
+    'kendala': {
+        'bima_fresh':    'IMPORT BIMA (FRESH)',
+        'kendalamaster': 'DB KENDALA (MASTER)',
+        'unsc':          'DB UNSC (END STATE)',
+        'laporan':       'NEW SUMMARY',
+        'tabsum':        'RECAP REPORT',
+    },
+    'ODP': {'validasi': 'MONITORING EXPAND 1:2'},
+}
+
+SHEET_CACHE_TTL = int(os.environ.get('SHEET_CACHE_TTL', 30))
+EDIT_LOCK_TTL_MINUTES = int(os.environ.get('EDIT_LOCK_TTL_MINUTES', 5))
+SYNC_LOG_FILE = str(ROOT_DIR / 'last_sync_time.txt')
+
+# =====================================================================
+# APP INIT
+# =====================================================================
+flask_app = Flask(
+    __name__,
+    template_folder=str(ROOT_DIR / 'templates'),
+    static_folder=str(ROOT_DIR / 'static'),
+    static_url_path='/static',
+)
+flask_app.secret_key = os.environ['FLASK_SECRET_KEY']
+flask_app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+flask_app.config['SESSION_COOKIE_HTTPONLY'] = True
+flask_app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+flask_app.config['WTF_CSRF_TIME_LIMIT'] = None
+flask_app.config['TEMPLATES_AUTO_RELOAD'] = True
+flask_app.jinja_env.auto_reload = True
+flask_app.jinja_env.globals.update(min=min, max=max)
+
+# Trust reverse proxy (Emergent ingress) so request.remote_addr is correct
+flask_app.wsgi_app = ProxyFix(flask_app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+csrf = CSRFProtect(flask_app)
+
+limiter = Limiter(
+    get_remote_address,
+    app=flask_app,
+    default_limits=[],
+    storage_uri="memory://",
+)
+
+# =====================================================================
+# DATABASE
+# =====================================================================
+@contextmanager
+def db_cursor():
+    conn = pymysql.connect(**MYSQL)
+    try:
+        yield conn, conn.cursor()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+# =====================================================================
+# GOOGLE SHEETS CLIENT + CACHE
+# =====================================================================
+_gs_client = None
+_sheet_cache = {}   # key: (spreadsheet_key, sheet_name) -> {'ts':..., 'data':...}
+
+def gs_client():
+    global _gs_client
+    if _gs_client is None:
+        creds_path = ROOT_DIR / os.environ.get('GOOGLE_CREDS_PATH', 'credentials.json')
+        creds = Credentials.from_service_account_file(
+            str(creds_path),
+            scopes=['https://www.googleapis.com/auth/spreadsheets'],
+        )
+        _gs_client = gspread.authorize(creds)
+    return _gs_client
+
+def get_sheet_values(spreadsheet_key, sheet_name, force_refresh=False):
+    """Cached fetch of all values from a sheet."""
+    key = (spreadsheet_key, sheet_name)
+    now = time.time()
+    cached = _sheet_cache.get(key)
+    if cached and not force_refresh and (now - cached['ts'] < SHEET_CACHE_TTL):
+        return cached['data']
+    ws = gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
+    values = ws.get_all_values()
+    _sheet_cache[key] = {'ts': now, 'data': values}
+    return values
+
+def invalidate_sheet_cache(spreadsheet_key=None, sheet_name=None):
+    global _sheet_cache
+    if spreadsheet_key is None:
+        _sheet_cache.clear()
+        return
+    key = (spreadsheet_key, sheet_name)
+    _sheet_cache.pop(key, None)
+
+def get_worksheet(spreadsheet_key, sheet_name):
+    return gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
+
+# =====================================================================
+# HELPERS
+# =====================================================================
+def prepare_dataframe_for_sheets(df):
+    for col in df.select_dtypes(include=['datetime64[ns]']).columns:
+        df[col] = df[col].dt.strftime('%Y-%m-%d')
+    return df.fillna("")
+
+STO_DATEL_MAP = {
+    'GOM': 'KEBUMEN', 'KAK': 'KEBUMEN', 'KBM': 'KEBUMEN', 'KTW': 'KEBUMEN',
+    'MGE': 'MAGELANG', 'MTY': 'MAGELANG',
+    'SWT': 'MUNTILAN', 'MUN': 'MUNTILAN',
+    'PWJ': 'PWREJO', 'KTA': 'PWREJO',
+    'TEM': 'TMNGGUNG', 'PRN': 'TMNGGUNG',
+    'WOS': 'WONOSOBO',
+}
+
+def map_sto_to_datel(sto):
+    return STO_DATEL_MAP.get(str(sto).strip().upper(), '')
+
+def handle_status_resume(status):
+    s = str(status).strip()
+    if s in ('OSS - FALLOUT', '7 | OSS - FALLOUT'): return 'FALLOUT'
+    if s == 'MIA - INVALID SURVEY': return 'INVALID SURVEY'
+    return s
+
+def format_date_for_sheets(d):
+    try:
+        dt = pd.to_datetime(d, errors='coerce')
+        if not pd.isna(dt):
+            return dt.strftime('%d/%m/%Y')
+    except Exception:
+        pass
+    return str(d)
+
+def clean_headers(headers):
+    seen = {}
+    out = []
+    for i, h in enumerate(headers):
+        h = str(h).strip()
+        if h == '':
+            out.append(f'UNUSED_COLUMN_{i}')
+        elif h in seen:
+            seen[h] += 1
+            out.append(f'{h}_{seen[h]}')
+        else:
+            seen[h] = 0
+            out.append(h)
+    return out
+
+def save_last_sync_time():
+    with open(SYNC_LOG_FILE, 'w') as f:
+        f.write(datetime.now().strftime("%d/%m/%Y %H:%M"))
+
+def get_last_sync_time():
+    if os.path.exists(SYNC_LOG_FILE):
+        with open(SYNC_LOG_FILE) as f:
+            return f.read().strip()
+    return "Belum ada data"
+
+# =====================================================================
+# AUTH DECORATORS
+# =====================================================================
+def login_required(f):
+    @wraps(f)
+    def wrap(*a, **kw):
+        if 'user' not in session:
+            if request.path.startswith('/api/') and request.headers.get('Accept', '').startswith('application/json'):
+                return jsonify({'error': 'Unauthorized'}), 401
+            return redirect(url_for('login'))
+        return f(*a, **kw)
+    return wrap
+
+def api_login_required(f):
+    @wraps(f)
+    def wrap(*a, **kw):
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        return f(*a, **kw)
+    return wrap
+
+def role_required(*roles):
+    def deco(f):
+        @wraps(f)
+        def wrap(*a, **kw):
+            if 'user' not in session:
+                return redirect(url_for('login'))
+            if session['user'].get('role') not in roles:
+                flash("Akses ditolak. Anda tidak memiliki izin untuk halaman ini.", "error")
+                return redirect(url_for('dashboard'))
+            return f(*a, **kw)
+        return wrap
+    return deco
+
+# =====================================================================
+# AUDIT LOG
+# =====================================================================
+def audit(action, sheet_name=None, row_key=None, column_name=None,
+          old_value=None, new_value=None):
+    try:
+        user = session.get('user') or {}
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """INSERT INTO audit_log
+                   (username, nama, sheet_name, row_key, column_name,
+                    old_value, new_value, action, ip_address)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (user.get('username', 'SYSTEM'), user.get('nama', ''),
+                 sheet_name, row_key, column_name,
+                 (str(old_value)[:500] if old_value is not None else None),
+                 (str(new_value)[:500] if new_value is not None else None),
+                 action, request.remote_addr if request else None)
+            )
+    except Exception as e:
+        print(f"[AUDIT ERROR] {e}")
+
+# =====================================================================
+# EDIT LOCK MANAGER
+# =====================================================================
+def cleanup_expired_locks():
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "DELETE FROM edit_locks WHERE locked_at < (NOW() - INTERVAL %s MINUTE)",
+                (EDIT_LOCK_TTL_MINUTES,)
+            )
+    except Exception:
+        pass
+
+def acquire_lock(sheet_name, row_key):
+    """Try to acquire a soft lock for (sheet,row). Returns (ok, lock_info)."""
+    cleanup_expired_locks()
+    if not row_key or not str(row_key).strip():
+        return False, None
+    user = session['user']
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """INSERT IGNORE INTO edit_locks (sheet_name, row_key, locked_by, locked_by_nama, locked_at)
+                   VALUES (%s,%s,%s,%s,NOW())""",
+                (sheet_name, row_key, user['username'], user.get('nama', ''))
+            )
+            cur.execute(
+                "SELECT locked_by, locked_by_nama, locked_at FROM edit_locks WHERE sheet_name=%s AND row_key=%s",
+                (sheet_name, row_key)
+            )
+            row = cur.fetchone()
+            if row and row['locked_by'] == user['username']:
+                cur.execute(
+                    "UPDATE edit_locks SET locked_at=NOW() WHERE sheet_name=%s AND row_key=%s AND locked_by=%s",
+                    (sheet_name, row_key, user['username'])
+                )
+                return True, row
+            return False, row
+    except Exception as e:
+        print(f"[LOCK ERROR] {e}")
+        return False, None
+
+def release_lock(sheet_name, row_key):
+    user = session.get('user') or {}
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "DELETE FROM edit_locks WHERE sheet_name=%s AND row_key=%s AND locked_by=%s",
+                (sheet_name, row_key, user.get('username', ''))
+            )
+    except Exception as e:
+        print(f"[UNLOCK ERROR] {e}")
+
+def get_active_locks(sheet_name):
+    """Return dict {row_key: {locked_by, locked_by_nama, locked_at}} for active locks."""
+    cleanup_expired_locks()
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "SELECT row_key, locked_by, locked_by_nama, locked_at FROM edit_locks WHERE sheet_name=%s",
+                (sheet_name,)
+            )
+            rows = cur.fetchall() or []
+        return {r['row_key']: {
+            'locked_by': r['locked_by'],
+            'nama': r['locked_by_nama'],
+            'locked_at': r['locked_at'].strftime('%H:%M') if r['locked_at'] else ''
+        } for r in rows}
+    except Exception:
+        return {}
+
+# =====================================================================
+# AUTOMATION LOGIC (refactored from original app.py)
+# =====================================================================
+def sync_bima_to_kendala():
+    """Sync IMPORT BIMA (FRESH) -> DB KENDALA (MASTER). Track new ORDER_IDs."""
+    try:
+        kendala_ss = gs_client().open_by_key(SPREADSHEET_IDS['kendala'])
+        bima_sheet = kendala_ss.worksheet(SHEET_NAMES['kendala']['bima_fresh'])
+        kendala_sheet = kendala_ss.worksheet(SHEET_NAMES['kendala']['kendalamaster'])
+
+        bima_data = bima_sheet.get_all_values()
+        kendala_data = kendala_sheet.get_all_values()
+
+        if not bima_data or len(bima_data) < 2:
+            return {"status": "success", "message": "Tidak ada data di IMPORT BIMA (FRESH).",
+                    "updates": 0, "appends": 0, "new_order_ids": []}
+
+        kendala_headers = [str(h).strip() for h in kendala_data[1]]
+        try:
+            order_id_col_idx = kendala_headers.index('ORDER_ID')
+        except ValueError:
+            return {"status": "error", "message": "Kolom 'ORDER_ID' tidak ditemukan di Baris 2 DB KENDALA."}
+
+        existing_order_map = {}
+        for i in range(2, len(kendala_data)):
+            if len(kendala_data[i]) > order_id_col_idx:
+                oid = str(kendala_data[i][order_id_col_idx]).strip()
+                if oid:
+                    existing_order_map[oid] = i + 1
+
+        bh = [str(h).strip() for h in bima_data[0]]
+        try:
+            bi_wonum   = bh.index('Workorder')
+            bi_orderid = bh.index('HELPER ORDER ID')
+            bi_devid   = bh.index('SC Order No/Track ID/CSRM No')
+            bi_sto     = bh.index('Workzone')
+            bi_status  = bh.index('Status')
+            bi_suberr  = bh.index('SUBERRORCODE')
+            bi_memo    = bh.index('ENGINEERMEMO')
+            bi_odate   = bh.index('TGL_CREATE')
+            bi_udate   = bh.index('TGL_UPDATE_STATUS')
+        except ValueError as e:
+            return {"status": "error", "message": f"Header BIMA hilang: {e}"}
+
+        updates, appends, new_ids = [], [], []
+        for row in bima_data[1:]:
+            if len(row) <= max(bi_wonum, bi_orderid, bi_devid, bi_sto, bi_status, bi_suberr, bi_memo, bi_odate, bi_udate):
+                continue
+            oid = str(row[bi_orderid]).strip()
+            if not oid:
+                continue
+            new_vals = [
+                row[bi_wonum], oid, row[bi_devid], row[bi_sto],
+                map_sto_to_datel(row[bi_sto]), handle_status_resume(row[bi_status]),
+                str(row[bi_suberr]).upper(), row[bi_memo],
+                format_date_for_sheets(row[bi_odate]), format_date_for_sheets(row[bi_udate]),
+            ]
+            if oid in existing_order_map:
+                row_num = existing_order_map[oid]
+                updates.append({'range': f"B{row_num}:K{row_num}", 'values': [new_vals]})
+            else:
+                appends.append([''] + new_vals)
+                new_ids.append(oid)
+
+        if updates:
+            kendala_sheet.batch_update(updates, value_input_option='USER_ENTERED')
+
+        if appends:
+            kendala_sheet.add_rows(len(appends))
+            append_ups = []
+            next_row = len(kendala_data) + 1
+            for i, r in enumerate(appends):
+                current = next_row + i
+                append_ups.append({'range': f"A{current}:K{current}", 'values': [r]})
+            if append_ups:
+                kendala_sheet.batch_update(append_ups, value_input_option='USER_ENTERED')
+
+        save_last_sync_time()
+        invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+
+        # Track new order_ids for user notification
+        batch_id = None
+        if new_ids:
+            batch_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+            try:
+                with db_cursor() as (conn, cur):
+                    cur.executemany(
+                        "INSERT IGNORE INTO sync_new_rows (order_id, sync_batch_id) VALUES (%s,%s)",
+                        [(oid, batch_id) for oid in new_ids]
+                    )
+            except Exception as e:
+                print(f"[SYNC TRACK ERROR] {e}")
+
+        audit('sync_bima', sheet_name=SHEET_NAMES['kendala']['kendalamaster'],
+              new_value=f"updates={len(updates)}, appends={len(appends)}, new_ids={len(new_ids)}")
+
+        return {
+            "status": "success",
+            "message": f"Sukses! Update: {len(updates)}, Tambah: {len(appends)}",
+            "updates": len(updates),
+            "appends": len(appends),
+            "new_order_ids": new_ids[:200],   # cap to keep payload small
+            "batch_id": batch_id,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
+def move_kendala_to_unsc():
+    """Pindahkan baris VERIFIKASI UNSC + BELUM ADA dari DB KENDALA ke UNSC."""
+    try:
+        kendala_ss = gs_client().open_by_key(SPREADSHEET_IDS['kendala'])
+        kendala_sheet = kendala_ss.worksheet(SHEET_NAMES['kendala']['kendalamaster'])
+        unsc_sheet = kendala_ss.worksheet(SHEET_NAMES['kendala']['unsc'])
+
+        kendala_values = kendala_sheet.get_all_values()
+        if len(kendala_values) < 3:
+            return {"status": "success", "message": "DB KENDALA kosong."}
+
+        kendala_headers = clean_headers(kendala_values[1])
+        df = pd.DataFrame(kendala_values[2:], columns=kendala_headers)
+
+        feedback_col = 'FEEDBACK ASO'
+        cek_db_col = 'CEK DB UNSC'
+        if feedback_col not in df.columns or cek_db_col not in df.columns:
+            return {"status": "error", "message": "Kolom filter tidak ditemukan."}
+
+        fb = df[feedback_col].str.strip().str.upper()
+        # Fix typo backward-compat: accept both VERIFIKASI & VERIVIKASI
+        mask_fb = fb.isin(['VERIFIKASI UNSC', 'VERIVIKASI UNSC'])
+        mask_cek = df[cek_db_col].str.strip().str.upper() == 'BELUM ADA'
+        df_move = df[mask_fb & mask_cek].copy()
+
+        if df_move.empty:
+            return {"status": "success", "message": "Tidak ada data untuk dipindah."}
+
+        cols_idx = list(range(2, 10))
+        cols_names = [kendala_headers[i] for i in cols_idx]
+        data_move = df_move[cols_names].copy()
+        data_move.insert(0, 'EMPTY_A', '')
+        values = data_move.values.tolist()
+
+        col_b = unsc_sheet.col_values(2)
+        start_row = max(len(col_b) + 1, 3)
+        num_rows = len(values)
+        cur_max = unsc_sheet.row_count
+        if start_row + num_rows > cur_max:
+            unsc_sheet.add_rows((start_row + num_rows) - cur_max)
+
+        unsc_sheet.update(
+            values=values,
+            range_name=f"A{start_row}:I{start_row + num_rows - 1}",
+            value_input_option='USER_ENTERED',
+        )
+        invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
+        audit('move_to_unsc', sheet_name=SHEET_NAMES['kendala']['unsc'],
+              new_value=f"{len(df_move)} baris dipindah")
+
+        return {"status": "success", "message": f"Sukses! {len(df_move)} data dipindahkan."}
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
+def hitung_rumus_otomatis(df):
+    """Add LAMA WO, UMUR KENDALA, IS_ACTIVE_KENDALA columns (vectorized)."""
+    df.columns = df.columns.str.strip().str.upper()
+
+    for col in ['ORDER_DATE', 'LAST_UPDATED_DATE', 'TGL_UPDATE_STATUS']:
+        if col in df.columns:
+            df[col + '_DT'] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
+
+    now = pd.Timestamp(datetime.now())
+
+    # Vectorized IS_ACTIVE (hybrid keyword + manual override)
+    manual_val = df.get('IS_ACTIVE_KENDALA', pd.Series([''] * len(df))).astype(str).str.strip().str.upper()
+    keywords = ['PS COMPLETED', 'DONE', 'CANCEL', 'REVOKE', 'COMPLETED PS', 'MATI LISTRIK']
+    combined = (
+        df.get('STATUS_RESUME', '').astype(str) + ' ' +
+        df.get('FEEDBACK ASO', '').astype(str) + ' ' +
+        df.get('ACTUAL KENDALA', '').astype(str)
+    ).str.upper()
+
+    keyword_inactive = combined.apply(lambda t: any(k in t for k in keywords))
+    is_active = pd.Series(['ACTIVE'] * len(df), index=df.index)
+    is_active[keyword_inactive] = 'INACTIVE'
+    is_active[manual_val.isin(['ACTIVE', 'INACTIVE'])] = manual_val[manual_val.isin(['ACTIVE', 'INACTIVE'])]
+
+    # LAMA WO
+    start = df.get('ORDER_DATE_DT', pd.Series([pd.NaT] * len(df)))
+    end_inactive = df.get('LAST_UPDATED_DATE_DT', pd.Series([pd.NaT] * len(df)))
+    fallback_end = df.get('TGL_UPDATE_STATUS_DT', pd.Series([pd.NaT] * len(df)))
+    end_inactive = end_inactive.fillna(fallback_end).fillna(now)
+    end_series = pd.Series([now] * len(df), index=df.index)
+    mask_inactive = (is_active == 'INACTIVE')
+    end_series[mask_inactive] = end_inactive[mask_inactive]
+    delta = (end_series - start).dt.days.fillna(0).astype(int)
+    delta = delta.clip(lower=0)
+    df['LAMA WO'] = delta
+
+    # UMUR KENDALA (logic A-G, non-overlapping bins)
+    def bin_age(d):
+        if d > 31:  return "G. >1 BULAN"
+        if d >= 22: return "F. >3 MINGGU"
+        if d >= 14: return "E. >2 MINGGU"
+        if d >= 7:  return "D. >1 MINGGU"
+        if d >= 4:  return "C. >3 HARI"
+        if d >= 1:  return "B. 1 - 3 HARI"
+        return "A. <1 HARI"
+    df['UMUR KENDALA'] = delta.apply(bin_age)
+
+    # Final: >180 days always INACTIVE
+    is_active[delta > 180] = 'INACTIVE'
+    df['IS_ACTIVE_KENDALA'] = is_active
+
+    # cleanup helper cols
+    for c in ['ORDER_DATE_DT', 'LAST_UPDATED_DATE_DT', 'TGL_UPDATE_STATUS_DT']:
+        if c in df.columns:
+            df.drop(columns=c, inplace=True)
+
+    return df
+
+
+# =====================================================================
+# CONTEXT PROCESSORS & HOOKS
+# =====================================================================
+@flask_app.context_processor
+def inject_globals():
+    user = session.get('user')
+    return dict(
+        user_nama=user.get('nama') if user else None,
+        user_role=user.get('role') if user else None,
+        csrf_token=generate_csrf,
+    )
+
+@flask_app.before_request
+def _log_session_ping():
+    # Touch session so it rolls over
+    if 'user' in session:
+        session.permanent = True
+
+# =====================================================================
+# ROUTES - AUTH
+# =====================================================================
+@flask_app.route('/')
+def home():
+    return redirect(url_for('dashboard')) if 'user' in session else redirect(url_for('login'))
+
+@flask_app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute", methods=['POST'])
+def login():
+    if 'user' in session:
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+
+        # Check brute-force: >=5 failed attempts in last 5 minutes from same username or IP
+        ip = request.remote_addr
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    """SELECT COUNT(*) AS c FROM login_attempts
+                       WHERE success=FALSE AND timestamp > (NOW() - INTERVAL 5 MINUTE)
+                         AND (username=%s OR ip_address=%s)""",
+                    (username, ip)
+                )
+                fail_count = cur.fetchone()['c']
+        except Exception:
+            fail_count = 0
+
+        if fail_count >= 5:
+            flash("Terlalu banyak percobaan login gagal. Coba lagi dalam 5 menit.", "error")
+            return render_template("login.html")
+
+        user = None
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute("SELECT * FROM users WHERE username=%s", (username,))
+                user = cur.fetchone()
+        except Exception as e:
+            flash(f"Database error: {e}", "error")
+            return render_template("login.html")
+
+        ok = False
+        if user:
+            stored = user['password']
+            # werkzeug hashes start with "pbkdf2:" or "scrypt:" or "argon2"
+            if stored.startswith(('pbkdf2:', 'scrypt:', 'argon2')):
+                ok = check_password_hash(stored, password)
+            else:
+                # legacy plain text — compare & auto-upgrade
+                if stored == password:
+                    ok = True
+                    try:
+                        with db_cursor() as (conn, cur):
+                            cur.execute(
+                                "UPDATE users SET password=%s WHERE id=%s",
+                                (generate_password_hash(password), user['id'])
+                            )
+                    except Exception as e:
+                        print(f"[PASSWORD UPGRADE ERROR] {e}")
+
+        # Log attempt
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    "INSERT INTO login_attempts (username, ip_address, success) VALUES (%s,%s,%s)",
+                    (username, ip, ok)
+                )
+                if ok and user:
+                    cur.execute("UPDATE users SET last_login=NOW() WHERE id=%s", (user['id'],))
+        except Exception:
+            pass
+
+        if ok:
+            session.permanent = True
+            session['user'] = {
+                'id': user['id'],
+                'nama': user['nama'],
+                'username': user['username'],
+                'role': user.get('role', 'operator'),
+            }
+            flash("Login berhasil!", "success")
+            return redirect(url_for('dashboard'))
+        else:
+            flash("Username atau password salah.", "error")
+    return render_template("login.html")
+
+@flask_app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@flask_app.route('/ganti_password', methods=['GET', 'POST'])
+@login_required
+def ganti_password():
+    if request.method == 'POST':
+        username = session['user']['username']
+        old_pw = request.form.get('old_password', '')
+        new_pw = request.form.get('new_password', '')
+
+        if len(new_pw) < 6:
+            flash("Password baru minimal 6 karakter.", "error")
+            return redirect(url_for('ganti_password'))
+
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute("SELECT password FROM users WHERE username=%s", (username,))
+                row = cur.fetchone()
+                ok = row and (check_password_hash(row['password'], old_pw)
+                              if row['password'].startswith(('pbkdf2:', 'scrypt:', 'argon2'))
+                              else row['password'] == old_pw)
+                if ok:
+                    cur.execute(
+                        "UPDATE users SET password=%s WHERE username=%s",
+                        (generate_password_hash(new_pw), username)
+                    )
+                    flash("Password berhasil diganti.", "success")
+                    audit('change_password')
+                else:
+                    flash("Password lama salah.", "error")
+        except Exception as e:
+            flash(f"Error: {e}", "error")
+        return redirect(url_for('ganti_password'))
+    return render_template("ganti_password.html")
+
+# =====================================================================
+# ROUTES - DASHBOARD
+# =====================================================================
+def _compute_dashboard_stats():
+    try:
+        values = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        if len(values) < 3:
+            return dict(total=0, done=0, unsc=0, pending=0, active=0, inactive=0)
+        header = [str(h).strip() for h in values[1]]
+        df = pd.DataFrame(values[2:], columns=header)
+        df.columns = df.columns.str.strip()
+        df = hitung_rumus_otomatis(df)
+        total = len(df)
+        fb = df.get('FEEDBACK ASO', pd.Series([''] * len(df))).astype(str).str.strip().str.upper()
+        done = int((fb == 'DONE TATI').sum())
+        unsc = int((fb == 'UNSC').sum())
+        pending = total - done - unsc
+        active = int((df['IS_ACTIVE_KENDALA'] == 'ACTIVE').sum()) if 'IS_ACTIVE_KENDALA' in df.columns else 0
+        inactive = total - active
+        return dict(total=total, done=done, unsc=unsc, pending=pending, active=active, inactive=inactive)
+    except Exception as e:
+        print(f"[DASHBOARD STATS ERROR] {e}")
+        return dict(total=0, done=0, unsc=0, pending=0, active=0, inactive=0)
+
+@flask_app.route('/dashboard')
+@login_required
+def dashboard():
+    stats = _compute_dashboard_stats()
+    last_sync_str = get_last_sync_time()
+    # Count unseen new rows
+    unseen = 0
+    try:
+        user_name = session['user']['username']
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """SELECT COUNT(*) AS c FROM sync_new_rows
+                   WHERE sync_time > (NOW() - INTERVAL 24 HOUR)
+                     AND (seen_by IS NULL OR NOT JSON_CONTAINS(seen_by, JSON_QUOTE(%s)))""",
+                (user_name,)
+            )
+            unseen = cur.fetchone()['c']
+    except Exception:
+        pass
+    return render_template(
+        'dashboard.html',
+        total=stats['total'], done=stats['done'], unsc=stats['unsc'], pending=stats['pending'],
+        active=stats['active'], inactive=stats['inactive'],
+        last_sync=last_sync_str, user=session['user'],
+        unseen_new_rows=unseen,
+    )
+
+@flask_app.route('/dashboard_stats')
+@api_login_required
+def api_dashboard_stats():
+    stats = _compute_dashboard_stats()
+    stats['last_sync'] = get_last_sync_time()
+    return jsonify(stats)
+
+# =====================================================================
+# ROUTES - KENDALA MASTER (with Quick Edit + New Data Highlight)
+# =====================================================================
+def _get_new_order_ids(hours=24):
+    """Return dict {order_id: sync_time_str} of recently synced rows."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """SELECT order_id, sync_time, sync_batch_id
+                   FROM sync_new_rows
+                   WHERE sync_time > (NOW() - INTERVAL %s HOUR)""",
+                (hours,)
+            )
+            rows = cur.fetchall() or []
+        return {r['order_id']: {
+            'time': r['sync_time'].strftime('%d/%m %H:%M') if r['sync_time'] else '',
+            'batch': r['sync_batch_id'],
+        } for r in rows}
+    except Exception:
+        return {}
+
+@flask_app.route('/kendala_master')
+@login_required
+def kendala_master():
+    error = None; pagination = {}; data_to_render = []; header_to_render = []
+    feedback_options = []; actual_options = []; is_active_options = ['ACTIVE', 'INACTIVE']
+
+    filter_sto = request.args.get('sto', '')
+    filter_status = request.args.get('status', '')
+    filter_feedback = request.args.get('feedback', '')
+    filter_new_only = request.args.get('new_only', '0') == '1'
+    search_query = request.args.get('search', '').strip().lower()
+
+    try:
+        current_page = max(request.args.get('p', 1, type=int), 1)
+        per_page = 100
+
+        all_data = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        if not all_data or len(all_data) < 4:
+            raise ValueError("Tidak ada data di sheet Kendala Master.")
+
+        header = [str(h).strip() for h in all_data[1]]
+        raw_rows = all_data[2:]
+        df = pd.DataFrame(raw_rows, columns=header)
+        df.columns = df.columns.str.strip()
+
+        # Track source row number in sheet (for update_kendala) - uppercase to survive hitung_rumus_otomatis
+        df['__SHEET_ROW__'] = range(3, 3 + len(df))
+
+        df = hitung_rumus_otomatis(df)
+
+        # Mark new rows
+        new_ids_map = _get_new_order_ids(24)
+        df['__IS_NEW__'] = df.get('ORDER_ID', pd.Series([''] * len(df))).astype(str).str.strip().isin(new_ids_map.keys())
+
+        if filter_sto and 'STO' in df.columns:
+            df = df[df['STO'] == filter_sto]
+        if filter_status:
+            col_status = 'STATUS' if 'STATUS' in df.columns else 'STATUS_RESUME'
+            if col_status in df.columns:
+                df = df[df[col_status] == filter_status]
+        if filter_feedback and 'FEEDBACK ASO' in df.columns:
+            df = df[df['FEEDBACK ASO'] == filter_feedback]
+        if filter_new_only:
+            df = df[df['__IS_NEW__']]
+        if search_query:
+            mask = pd.Series(False, index=df.index)
+            for col in ['WONUM', 'ORDER_ID', 'DEVICE_ID']:
+                if col in df.columns:
+                    mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False)
+            df = df[mask]
+
+        total_rows = len(df)
+        total_pages = max((total_rows + per_page - 1) // per_page, 1)
+        if current_page > total_pages:
+            current_page = total_pages
+        start_index = (current_page - 1) * per_page
+        end_index = start_index + per_page
+
+        df_page = df.iloc[start_index:end_index].fillna("")
+        sheet_rows = df_page['__SHEET_ROW__'].tolist()
+        is_new_flags = df_page['__IS_NEW__'].tolist()
+
+        # drop helper cols before render
+        display_df = df_page.drop(columns=['__SHEET_ROW__', '__IS_NEW__'], errors='ignore')
+        data_to_render = display_df.values.tolist()
+        header_to_render = list(display_df.columns)
+
+        # Options (soft fail)
+        try:
+            opt_ws = get_worksheet(SPREADSHEET_IDS['kendala'], 'Options')
+            feedback_options = [x for x in opt_ws.col_values(2)[1:] if x]
+            actual_options = [x for x in opt_ws.col_values(1)[1:] if x]
+        except Exception:
+            pass
+
+        # Active locks for page
+        active_locks = get_active_locks(SHEET_NAMES['kendala']['kendalamaster'])
+
+        pagination = {
+            'current_page': current_page, 'total_pages': total_pages,
+            'total_rows': total_rows, 'per_page': per_page, 'start_index': start_index,
+            'sto': filter_sto, 'status': filter_status,
+            'feedback': filter_feedback, 'search': search_query,
+            'new_only': '1' if filter_new_only else '',
+        }
+
+        return render_template(
+            "kendalamaster.html",
+            user=session.get('user'),
+            header=header_to_render, data=data_to_render,
+            sheet_rows=sheet_rows, is_new_flags=is_new_flags,
+            active_locks=active_locks,
+            error=error, pagination=pagination,
+            feedback_options=feedback_options, actual_options=actual_options,
+            is_active_options=is_active_options,
+            total_new_today=sum(is_new_flags),
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return render_template(
+            "kendalamaster.html",
+            user=session.get('user'),
+            header=[], data=[], sheet_rows=[], is_new_flags=[],
+            active_locks={}, error=f"Gagal memuat data: {e}",
+            pagination={}, feedback_options=[], actual_options=[],
+            is_active_options=['ACTIVE', 'INACTIVE'], total_new_today=0,
+        )
+
+@flask_app.route('/kendala_data')
+@api_login_required
+def api_kendala_data():
+    """Lightweight JSON endpoint for auto-refresh without full page reload."""
+    try:
+        filter_sto = request.args.get('sto', '')
+        filter_status = request.args.get('status', '')
+        filter_feedback = request.args.get('feedback', '')
+        filter_new_only = request.args.get('new_only', '0') == '1'
+        search_query = request.args.get('search', '').strip().lower()
+        current_page = max(request.args.get('p', 1, type=int), 1)
+        per_page = 100
+
+        all_data = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        if not all_data or len(all_data) < 4:
+            return jsonify({'data': [], 'sheet_rows': [], 'is_new_flags': [], 'total': 0})
+
+        header = [str(h).strip() for h in all_data[1]]
+        df = pd.DataFrame(all_data[2:], columns=header)
+        df.columns = df.columns.str.strip()
+        df['__SHEET_ROW__'] = range(3, 3 + len(df))
+        df = hitung_rumus_otomatis(df)
+
+        new_ids_map = _get_new_order_ids(24)
+        df['__IS_NEW__'] = df.get('ORDER_ID', pd.Series([''] * len(df))).astype(str).str.strip().isin(new_ids_map.keys())
+
+        if filter_sto and 'STO' in df.columns:
+            df = df[df['STO'] == filter_sto]
+        if filter_status:
+            col_status = 'STATUS' if 'STATUS' in df.columns else 'STATUS_RESUME'
+            if col_status in df.columns:
+                df = df[df[col_status] == filter_status]
+        if filter_feedback and 'FEEDBACK ASO' in df.columns:
+            df = df[df['FEEDBACK ASO'] == filter_feedback]
+        if filter_new_only:
+            df = df[df['__IS_NEW__']]
+        if search_query:
+            mask = pd.Series(False, index=df.index)
+            for col in ['WONUM', 'ORDER_ID', 'DEVICE_ID']:
+                if col in df.columns:
+                    mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False)
+            df = df[mask]
+
+        total = len(df)
+        start_index = (current_page - 1) * per_page
+        df_page = df.iloc[start_index:start_index + per_page].fillna("")
+
+        active_locks = get_active_locks(SHEET_NAMES['kendala']['kendalamaster'])
+
+        return jsonify({
+            'data': df_page.drop(columns=['__SHEET_ROW__', '__IS_NEW__'], errors='ignore').values.tolist(),
+            'sheet_rows': df_page['__SHEET_ROW__'].tolist(),
+            'is_new_flags': df_page['__IS_NEW__'].tolist(),
+            'start_index': start_index,
+            'total': total,
+            'active_locks': active_locks,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@flask_app.route('/kendala_row/<int:row_num>')
+@api_login_required
+def api_kendala_row(row_num):
+    """Get a single row by sheet row number - for quick edit modal."""
+    try:
+        all_data = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        if row_num - 1 >= len(all_data) or row_num < 3:
+            return jsonify({'error': 'Row tidak ditemukan'}), 404
+        header = [str(h).strip() for h in all_data[1]]
+        row = all_data[row_num - 1]
+        row = row + [''] * (len(header) - len(row))
+        row_dict = dict(zip(header, row[:len(header)]))
+        return jsonify({'row': row_dict, 'row_num': row_num, 'sheet_name': SHEET_NAMES['kendala']['kendalamaster']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@flask_app.route('/lock', methods=['POST'])
+@api_login_required
+def api_lock():
+    """Acquire soft lock on a row before editing."""
+    data = request.get_json() or {}
+    sheet_name = data.get('sheet_name')
+    row_key = str(data.get('row_key', ''))
+    if not sheet_name or not row_key:
+        return jsonify({'error': 'sheet_name & row_key required'}), 400
+    ok, lock = acquire_lock(sheet_name, row_key)
+    return jsonify({
+        'ok': ok,
+        'locked_by': lock.get('locked_by') if lock else None,
+        'locked_by_nama': lock.get('locked_by_nama') if lock else None,
+        'locked_at': lock.get('locked_at').strftime('%H:%M') if lock and lock.get('locked_at') else None,
+    })
+
+@flask_app.route('/unlock', methods=['POST'])
+@api_login_required
+def api_unlock():
+    data = request.get_json() or {}
+    sheet_name = data.get('sheet_name')
+    row_key = str(data.get('row_key', ''))
+    if sheet_name and row_key:
+        release_lock(sheet_name, row_key)
+    return jsonify({'ok': True})
+
+@flask_app.route('/update_kendala', methods=['POST'])
+@login_required
+def update_kendala():
+    """Legacy bulk update (form-encoded col[row]=value)."""
+    try:
+        updates_by_row = {}
+        pattern = re.compile(r'(.+?)\[(\d+)\]')
+        for key, value in request.form.items():
+            m = pattern.match(key)
+            if m:
+                col = m.group(1)
+                rn = int(m.group(2))
+                updates_by_row.setdefault(rn, {})[col] = value
+
+        ws = get_worksheet(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        headers = ws.row_values(2)
+        header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
+
+        cells = []
+        for rn, changes in updates_by_row.items():
+            for col, val in changes.items():
+                col_clean = col.strip()
+                if col_clean in header_map:
+                    cells.append(gspread.Cell(row=rn, col=header_map[col_clean], value=val))
+        if cells:
+            ws.update_cells(cells, value_input_option='USER_ENTERED')
+            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+            audit('update_bulk', sheet_name=SHEET_NAMES['kendala']['kendalamaster'],
+                  new_value=f"{len(updates_by_row)} rows")
+            flash(f"Berhasil memperbarui {len(updates_by_row)} baris data.", "success")
+        else:
+            flash("Tidak ada perubahan yang disimpan.", "info")
+    except Exception as e:
+        flash(f"Gagal mengupdate data: {e}", "error")
+        traceback.print_exc()
+    return redirect(request.referrer or url_for('kendala_master'))
+
+@flask_app.route('/update_kendala_row', methods=['POST'])
+@api_login_required
+def api_update_kendala_row():
+    """Quick-edit save: JSON {row_num, row_key(ORDER_ID), updates:{col:val}}."""
+    data = request.get_json(force=True) or {}
+    row_num = int(data.get('row_num', 0))
+    row_key = str(data.get('row_key', '')).strip()
+    updates = data.get('updates', {})
+    sheet = SHEET_NAMES['kendala']['kendalamaster']
+
+    if not row_num or not row_key or not updates:
+        return jsonify({'ok': False, 'error': 'Missing row_num/row_key/updates'}), 400
+
+    # Check lock
+    cleanup_expired_locks()
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "SELECT locked_by FROM edit_locks WHERE sheet_name=%s AND row_key=%s",
+                (sheet, row_key)
+            )
+            lk = cur.fetchone()
+        if lk and lk['locked_by'] != session['user']['username']:
+            return jsonify({'ok': False, 'error': f"Row dikunci oleh {lk['locked_by']}. Refresh halaman."}), 409
+    except Exception:
+        pass
+
+    try:
+        ws = get_worksheet(SPREADSHEET_IDS['kendala'], sheet)
+        headers = ws.row_values(2)
+        header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
+        # Get old values for audit
+        old_row = ws.row_values(row_num)
+        cells = []
+        for col, val in updates.items():
+            col_clean = col.strip()
+            if col_clean in header_map:
+                idx = header_map[col_clean]
+                old_val = old_row[idx - 1] if len(old_row) >= idx else ''
+                cells.append(gspread.Cell(row=row_num, col=idx, value=val))
+                audit('update_row', sheet_name=sheet, row_key=row_key,
+                      column_name=col_clean, old_value=old_val, new_value=val)
+        if cells:
+            ws.update_cells(cells, value_input_option='USER_ENTERED')
+            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], sheet)
+            release_lock(sheet, row_key)
+            return jsonify({'ok': True, 'updated': len(cells)})
+        return jsonify({'ok': False, 'error': 'Tidak ada kolom yang dikenali'}), 400
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+@flask_app.route('/mark_new_seen', methods=['POST'])
+@api_login_required
+def api_mark_new_seen():
+    """Mark new rows as seen by current user."""
+    try:
+        user_name = session['user']['username']
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """UPDATE sync_new_rows
+                   SET seen_by = JSON_ARRAY_APPEND(
+                     COALESCE(seen_by, JSON_ARRAY()), '$', %s
+                   )
+                   WHERE sync_time > (NOW() - INTERVAL 24 HOUR)
+                     AND (seen_by IS NULL OR NOT JSON_CONTAINS(seen_by, JSON_QUOTE(%s)))""",
+                (user_name, user_name)
+            )
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+# =====================================================================
+# ROUTES - UNSC
+# =====================================================================
+@flask_app.route('/unsc')
+@login_required
+def unsc():
+    error = None; pagination = {}; data_to_render = []; header_to_render = []
+    unsc_status_options = []; unsc_validasi_options = []
+
+    filter_sto = request.args.get('sto', '')
+    filter_status = request.args.get('status', '')
+    filter_validasi = request.args.get('validasi', '')
+    search_query = request.args.get('search', '').strip().lower()
+
+    try:
+        current_page = max(request.args.get('p', 1, type=int), 1)
+        per_page = 100
+
+        all_data = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
+        if not all_data or len(all_data) < 2:
+            raise ValueError("Data UNSC kosong.")
+
+        header = [str(h).strip() for h in all_data[1]]
+        df = pd.DataFrame(all_data[2:], columns=header)
+        df.columns = df.columns.str.strip()
+        df['__SHEET_ROW__'] = range(3, 3 + len(df))
+
+        if filter_sto and 'STO' in df.columns:
+            df = df[df['STO'] == filter_sto]
+        col_status = next((c for c in df.columns if 'STATUS' in c), None)
+        if filter_status and col_status:
+            df = df[df[col_status] == filter_status]
+        col_validasi = next((c for c in df.columns if 'VALIDASI' in c), None)
+        if filter_validasi and col_validasi:
+            df = df[df[col_validasi] == filter_validasi]
+        if search_query:
+            mask = pd.Series(False, index=df.index)
+            for col in ['ORDER_ID', 'DEVICE_ID', 'NAMA SALESFORCE', 'STO']:
+                if col in df.columns:
+                    mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False)
+            df = df[mask]
+
+        total_rows = len(df)
+        total_pages = max((total_rows + per_page - 1) // per_page, 1)
+        if current_page > total_pages:
+            current_page = total_pages
+        start_index = (current_page - 1) * per_page
+        df_page = df.iloc[start_index:start_index + per_page].fillna("")
+
+        sheet_rows = df_page['__SHEET_ROW__'].tolist()
+        display_df = df_page.drop(columns=['__SHEET_ROW__'], errors='ignore')
+        data_to_render = display_df.values.tolist()
+        header_to_render = list(display_df.columns)
+
+        try:
+            opt_ws = get_worksheet(SPREADSHEET_IDS['kendala'], 'Options')
+            unsc_status_options = [x for x in opt_ws.col_values(3)[1:] if x]
+            unsc_validasi_options = [x for x in opt_ws.col_values(4)[1:] if x]
+        except Exception:
+            pass
+
+        pagination = {
+            'current_page': current_page, 'per_page': per_page,
+            'total_rows': total_rows, 'total_pages': total_pages, 'start_index': start_index,
+            'sto': filter_sto, 'status': filter_status, 'validasi': filter_validasi, 'search': search_query,
+        }
+    except Exception as e:
+        error = str(e)
+        traceback.print_exc()
+
+    return render_template(
+        'unsc.html',
+        data=data_to_render, header=header_to_render,
+        sheet_rows=locals().get('sheet_rows', []),
+        pagination=pagination,
+        unsc_status_options=unsc_status_options, unsc_validasi_options=unsc_validasi_options,
+        error=error,
+    )
+
+@flask_app.route('/update_unsc', methods=['POST'])
+@login_required
+def update_unsc():
+    try:
+        updates_by_row = {}
+        pattern = re.compile(r'(.+?)\[(\d+)\]')
+        for key, value in request.form.items():
+            m = pattern.match(key)
+            if m:
+                col = m.group(1)
+                rn = int(m.group(2))
+                updates_by_row.setdefault(rn, {})[col] = value
+
+        ws = get_worksheet(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
+        headers = ws.row_values(2)
+        header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
+
+        cells = []
+        for rn, changes in updates_by_row.items():
+            for col, val in changes.items():
+                col_clean = col.strip()
+                if col_clean in header_map:
+                    cells.append(gspread.Cell(row=rn, col=header_map[col_clean], value=val))
+        if cells:
+            ws.update_cells(cells, value_input_option='USER_ENTERED')
+            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
+            audit('update_unsc', sheet_name=SHEET_NAMES['kendala']['unsc'], new_value=f"{len(updates_by_row)} rows")
+            flash(f"Berhasil memperbarui {len(updates_by_row)} baris data UNSC.", "success")
+        else:
+            flash("Tidak ada perubahan yang disimpan.", "info")
+    except Exception as e:
+        flash(f"Gagal mengupdate data: {e}", "error")
+    return redirect(request.referrer or url_for('unsc'))
+
+# =====================================================================
+# ROUTES - SYNC / MOVE
+# =====================================================================
+@flask_app.route('/sync-bima', methods=['POST'])
+@api_login_required
+def api_sync_bima():
+    result = sync_bima_to_kendala()
+    return jsonify(result), (200 if result['status'] == 'success' else 500)
+
+@flask_app.route('/move-to-unsc', methods=['POST'])
+@api_login_required
+def api_move_to_unsc():
+    result = move_kendala_to_unsc()
+    return jsonify(result), (200 if result['status'] == 'success' else 500)
+
+# =====================================================================
+# ROUTES - UPLOAD (Excel filter flow)
+# =====================================================================
+ALLOWED_KELAS = {'04', '05', '06'}
+
+@flask_app.route('/upload')
+@login_required
+def upload():
+    return render_template("upload.html", user=session['user'])
+
+@flask_app.route('/tabel')
+@login_required
+def tabel():
+    kelas = request.args.get('kelas', '04')
+    if kelas not in ALLOWED_KELAS:
+        kelas = '04'
+    error = None; data_html = None; pagination = {}
+    try:
+        current_page = max(request.args.get('p', 1, type=int), 1)
+        per_page = 100
+        sheet_name = SHEET_NAMES['upload'][kelas]
+        all_data = get_sheet_values(SPREADSHEET_IDS['upload'], sheet_name)
+        if not all_data:
+            raise ValueError("Tidak ada data.")
+        if kelas in ['05', '04']:
+            header = all_data[1] if len(all_data) > 2 else []
+            rows = all_data[2:] if len(all_data) > 2 else []
+        else:
+            header = all_data[0] if len(all_data) > 1 else []
+            rows = all_data[1:] if len(all_data) > 1 else []
+        if not rows:
+            raise ValueError("Tidak ada baris data.")
+        total_rows = len(rows)
+        total_pages = max((total_rows + per_page - 1) // per_page, 1)
+        if current_page > total_pages: current_page = total_pages
+        start_index = (current_page - 1) * per_page
+        paginated = rows[start_index:start_index + per_page]
+        df = pd.DataFrame(paginated, columns=header)
+        cols_drop = [c for c in df.columns if str(c).strip().upper() == 'NO']
+        if cols_drop:
+            df.drop(columns=cols_drop, inplace=True)
+        nomor = [start_index + i + 1 for i in range(len(df))]
+        df.insert(0, 'No', nomor)
+        data_html = df.to_html(classes='data', index=False, border=0, escape=False)
+        pagination = {
+            'current_page': current_page, 'total_pages': total_pages,
+            'total_rows': total_rows, 'per_page': per_page, 'start_index': start_index,
+        }
+    except Exception as e:
+        error = f"Gagal memuat data: {e}"
+    return render_template(
+        "tabel.html", data={kelas: data_html}, user=session['user'],
+        kelas=kelas, error=error, pagination=pagination
+    )
+
+@flask_app.route('/filter', methods=['POST'])
+@login_required
+def filter_data():
+    kelas = request.form.get('kelas', '')
+    if kelas not in ALLOWED_KELAS:
+        flash("Jenis sheet tidak valid.", "error")
+        return redirect(url_for('upload'))
+    file = request.files.get('file')
+    if not file:
+        flash("File tidak ditemukan.", "error")
+        return redirect(url_for('upload'))
+    try:
+        df = pd.read_excel(file)
+        req = ['SC Order No/Track ID/CSRM No', 'CRM Order Type', 'Status']
+        if not all(c in df.columns for c in req):
+            flash("Kolom wajib tidak lengkap di file!", "error")
+            return redirect(url_for('upload'))
+        filtered = df[
+            df['SC Order No/Track ID/CSRM No'].astype(str).str.contains('WSA', case=False, na=False) &
+            df['CRM Order Type'].isin(['CREATE', 'MIGRATE']) &
+            (df['Status'] == 'WORKFAIL')
+        ]
+        cleaned = prepare_dataframe_for_sheets(filtered)
+        ws = get_worksheet(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
+        all_data = ws.get_all_values()
+        header_row = 1 if kelas == '06' else 2
+        old_header = all_data[header_row - 1] if len(all_data) >= header_row else []
+        max_col = gspread.utils.a1_to_rowcol('Z1')[1]
+        safe_header = old_header[:max_col]
+        cleaned = cleaned[[c for c in safe_header if c in cleaned.columns]]
+        for c in safe_header:
+            if c not in cleaned.columns:
+                cleaned[c] = ''
+        cleaned = cleaned.reindex(columns=safe_header)
+        existing = len(all_data)
+        ws.batch_clear([f"A{header_row + 1}:Z{existing}"])
+        if not cleaned.empty:
+            ws.update(
+                values=cleaned.fillna('').astype(str).values.tolist(),
+                range_name=f"A{header_row + 1}",
+                value_input_option='USER_ENTERED',
+            )
+        invalidate_sheet_cache(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
+        audit('upload_filter_bima', sheet_name=SHEET_NAMES['upload'][kelas], new_value=f"{len(cleaned)} rows")
+        flash("Spreadsheet berhasil diupdate.", "success")
+    except Exception as e:
+        flash(f"Gagal memfilter: {e}", "error")
+        traceback.print_exc()
+    return redirect(url_for('tabel', kelas=kelas))
+
+@flask_app.route('/hapus_kolom', methods=['POST'])
+@login_required
+def hapus_kolom():
+    kelas = request.form.get('kelas', '')
+    if kelas not in ALLOWED_KELAS:
+        flash("Jenis sheet tidak valid.", "error")
+        return redirect(url_for('upload'))
+    file = request.files.get('file')
+    if not file:
+        flash("Tidak ada file.", "error")
+        return redirect(url_for('upload'))
+    fn = file.filename.lower()
+    try:
+        if fn.endswith('.xlsx'):
+            df = pd.read_excel(file, engine='openpyxl')
+        elif fn.endswith('.xls'):
+            file.seek(0)
+            first_bytes = file.read(2048).lower()
+            file.seek(0)
+            if b'<html' in first_bytes or b'<table' in first_bytes:
+                try:
+                    tables = pd.read_html(file)
+                    df = tables[0] if tables else pd.DataFrame()
+                except Exception:
+                    df = pd.read_excel(file, engine='xlrd')
+            else:
+                df = pd.read_excel(file, engine='xlrd')
+        elif fn.endswith('.csv'):
+            df = pd.read_csv(file)
+        else:
+            flash("Format tidak didukung.", "error")
+            return redirect(url_for('upload'))
+
+        cols_del = ['CRMORDERTYPE', 'REGIONAL LAMA', 'DISTRICT LAMA', 'DATEL LAMA']
+        df.drop(columns=[c for c in cols_del if c in df.columns], inplace=True)
+        ws = get_worksheet(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
+        sd = ws.get_all_values()
+        full_header = (sd[1] if kelas in ['04', '05'] and len(sd) > 1 else (sd[0] if len(sd) > 0 else []))
+        header_limited = full_header[:56]
+        seen = set(); safe_header = []
+        for c in header_limited:
+            if c not in seen:
+                safe_header.append(c); seen.add(c)
+            else:
+                safe_header.append(None)
+        aligned = []
+        for _, row in df.iterrows():
+            ar = []
+            for c in safe_header:
+                if c is None: ar.append('')
+                elif c in df.columns:
+                    v = row[c]
+                    ar.append('' if pd.isna(v) else str(v))
+                else: ar.append('')
+            aligned.append(ar)
+        existing = len(sd)
+        if existing > 2:
+            ws.batch_clear([f"A3:BD{existing + 100}"])
+        if aligned:
+            ws.update(values=aligned, range_name='A3', value_input_option='USER_ENTERED')
+        invalidate_sheet_cache(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
+        audit('upload_hapus_kolom', sheet_name=SHEET_NAMES['upload'][kelas], new_value=f"{len(aligned)} rows")
+        flash("Data berhasil diupdate.", "success")
+    except Exception as e:
+        flash(f"Gagal: {e}", "error")
+        traceback.print_exc()
+    return redirect(url_for('tabel', kelas=kelas))
+
+# =====================================================================
+# ROUTES - AUDIT LOG (admin only)
+# =====================================================================
+@flask_app.route('/audit_log')
+@login_required
+@role_required('admin')
+def audit_log_view():
+    page = max(request.args.get('p', 1, type=int), 1)
+    per_page = 50
+    user_filter = request.args.get('user', '')
+    action_filter = request.args.get('action', '')
+    try:
+        with db_cursor() as (conn, cur):
+            where = []
+            params = []
+            if user_filter:
+                where.append("username=%s"); params.append(user_filter)
+            if action_filter:
+                where.append("action=%s"); params.append(action_filter)
+            where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+            cur.execute(f"SELECT COUNT(*) AS c FROM audit_log {where_sql}", params)
+            total = cur.fetchone()['c']
+            cur.execute(
+                f"""SELECT * FROM audit_log {where_sql}
+                    ORDER BY timestamp DESC LIMIT %s OFFSET %s""",
+                params + [per_page, (page - 1) * per_page]
+            )
+            rows = cur.fetchall()
+            cur.execute("SELECT DISTINCT username FROM audit_log ORDER BY username")
+            usernames = [r['username'] for r in cur.fetchall()]
+            cur.execute("SELECT DISTINCT action FROM audit_log ORDER BY action")
+            actions = [r['action'] for r in cur.fetchall()]
+    except Exception as e:
+        flash(f"DB error: {e}", "error")
+        rows = []; total = 0; usernames = []; actions = []
+    total_pages = max((total + per_page - 1) // per_page, 1)
+    return render_template(
+        'audit_log.html', rows=rows, page=page, total_pages=total_pages, total=total,
+        usernames=usernames, actions=actions,
+        user_filter=user_filter, action_filter=action_filter,
+    )
+
+# =====================================================================
+# ROUTES - PLACEHOLDERS
+# =====================================================================
+@flask_app.route('/summary')
+@login_required
+def summary(): return render_template('summary.html', header1=[], data1=[])
+
+@flask_app.route('/tati')
+@login_required
+def tati(): return render_template('tati.html', header1=[], data1=[])
+
+@flask_app.route('/lapvalidasiodp')
+@login_required
+def lapvalidasiodp(): return render_template('lapvalidasiodp.html', header1=[], data1=[])
+
+@flask_app.route('/newsummarykendala')
+@login_required
+def newsummarykendala(): return render_template('newsummarykendala.html', header1=[], data1=[])
+
+@flask_app.route('/psretti')
+@login_required
+def psretti(): return render_template('psretti.html', header1=[], data1=[])
+
+@flask_app.route('/wokendala')
+@login_required
+def wokendala(): return render_template('wokendala.html', header1=[], data1=[])
+
+@flask_app.route('/datel')
+@login_required
+def datel(): return render_template("datel.html", user=session.get('user')) if Path(ROOT_DIR / 'templates/datel.html').exists() else ("Halaman datel belum tersedia", 200)
+
+@flask_app.route('/verifikasi_odp_full')
+@login_required
+def verifikasi_odp_full(): return render_template('verifikasi_odp_full.html', header=[], data=[])
+
+# =====================================================================
+# HEALTH
+# =====================================================================
+@flask_app.route('/health')
+def health():
+    return jsonify({'status': 'ok', 'service': 'FilterIN', 'time': datetime.now().isoformat()})
+
+# Exempt webhook-style endpoints from CSRF if needed (none currently)
+
+if __name__ == '__main__':
+    flask_app.run(host='0.0.0.0', port=5000, debug=False)

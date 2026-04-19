@@ -1,0 +1,471 @@
+:root {
+    --primary-color: #2c3e50; 
+    --secondary-color: #34495e;
+    --accent-color: #3498db;
+    --success-color: #28a745; 
+    --success-hover-color: #218838;
+    --danger-color: #dc3545;
+    --light-gray-color: #f8f9fa;
+    --border-color: #e0e0e0;
+    --sticky-col-bg: #f7f9fc; /* Background kolom terkunci */
+}
+
+/* === 1. STYLE UNTUK FILTER SECTION (BARU) === */
+.filter-card {
+    background: #ffffff;
+    padding: 25px;
+    margin-bottom: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.04);
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.filter-card:hover {
+    box-shadow: 0 6px 12px rgba(0,0,0,0.08);
+}
+
+/* Label Filter */
+.filter-card label {
+    font-weight: 600;
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 8px;
+    display: block;
+    letter-spacing: 0.3px;
+}
+
+/* Input & Select pada Filter */
+.filter-card input[type="text"],
+.filter-card select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    background-color: #fff;
+    transition: all 0.3s ease;
+}
+
+/* Efek saat diklik (Focus) */
+.filter-card input[type="text"]:focus,
+.filter-card select:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
+    outline: none;
+}
+
+/* Ikon Search di dalam Input */
+.filter-card .fa-search {
+    color: #aaa;
+    transition: color 0.3s;
+}
+
+.filter-card input:focus + .fa-search,
+.filter-card input:focus ~ .fa-search {
+    color: var(--accent-color);
+}
+
+/* Tombol di Filter */
+.filter-card .btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    height: 42px; /* Menyamakan tinggi dengan input */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.filter-card .btn-primary:hover {
+    background-color: var(--secondary-color);
+}
+
+.filter-card a {
+    color: var(--danger-color);
+    font-weight: 500;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.filter-card a:hover {
+    color: #a71d2a;
+    text-decoration: underline;
+}
+
+
+/* === 2. STYLE TABEL DENGAN STICKY HEADER & COLUMN (YANG LAMA) === */
+
+.table-wrapper {
+    /* Kunci Scrollbar */
+    max-height: 70vh; 
+    overflow: auto; 
+    position: relative; 
+    
+    /* Kosmetik Container */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: #fff;
+}
+
+.editable-table {
+    width: 100%;
+    border-collapse: separate; /* Wajib separate untuk sticky */
+    border-spacing: 0;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+/* Header Tabel (Sticky Top) */
+.editable-table th {
+    background-color: var(--primary-color);
+    color: #fff;
+    font-weight: 600;
+    padding: 15px 16px;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #1a252f;
+    
+    /* Logic Sticky */
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.editable-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    border-right: 1px solid #f0f0f0;
+    vertical-align: middle;
+    color: #333;
+}
+
+/* Kolom Pertama (Sticky Left) */
+.editable-table th:nth-child(1),
+.editable-table td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: var(--sticky-col-bg);
+    border-right: 2px solid #dce0e6; /* Garis pembatas tegas */
+    font-weight: 600; /* Menonjolkan ID/Nomor */
+    color: var(--primary-color);
+}
+
+/* Sudut Kiri Atas (Header + Kolom 1) */
+.editable-table th:nth-child(1) {
+    z-index: 30; 
+    background-color: var(--secondary-color); /* Warna sedikit beda untuk sudut */
+}
+
+/* Zebra Striping */
+.editable-table tr:nth-child(even) td {
+    background-color: #fafbfc;
+}
+
+/* Fix Zebra Striping untuk Sticky Column */
+.editable-table tr:nth-child(even) td:nth-child(1) {
+    background-color: #f1f4f9;
+}
+
+/* Hover Effect Row */
+.editable-table tbody tr:hover td {
+    background-color: #e3f2fd !important;
+    color: #0277bd;
+}
+
+/* Hover Effect untuk Sticky Column (supaya tidak transparan/putih) */
+.editable-table tbody tr:hover td:nth-child(1) {
+    background-color: #bbdefb !important;
+}
+
+/* === 3. STYLE INPUT DI DALAM TABEL === */
+.editable-table input[type="text"],
+.editable-table select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid transparent; /* Border transparan default */
+    border-radius: 4px;
+    background: transparent;
+    font-size: 13px;
+}
+
+/* Saat diedit/diklik */
+.editable-table input[type="text"]:focus,
+.editable-table select:focus {
+    background: #fff;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+    outline: none;
+}
+
+/* Penanda Baris yang Diedit (Dirty Row) */
+.editable-table tr.is-dirty td {
+    background-color: #fff9db !important; /* Kuning lembut */
+    color: #856404;
+}
+.editable-table tr.is-dirty td:nth-child(1) {
+    background-color: #ffeeba !important; /* Kuning lebih gelap untuk sticky */
+}
+
+/* === 4. TOMBOL SIMPAN MENGAMBANG (FLOATING ACTION BUTTON) === */
+.controls-bar {
+    position: fixed; 
+    bottom: 30px;        
+    right: 30px;         
+    background-color: #fff;
+    padding: 10px;
+    border-radius: 50px;
+    box-shadow: 0 8px 20px rgba(0,0,0, 0.15);
+    z-index: 1000;    
+    display: none; /* Default hidden, muncul via JS */
+    border: 1px solid #eee;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(50px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.save-btn {
+    background-color: var(--success-color);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 30px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);
+    transition: transform 0.1s, background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.save-btn:hover {
+    background-color: var(--success-hover-color);
+    transform: translateY(-2px);
+}
+
+.save-btn:active {
+    transform: translateY(0);
+}
+
+/* --- COLOR CODING STATUS --- */
+
+/* Warna Merah (Cancel / Request Kritis) */
+.status-red {
+    background-color: #e74c3c !important;
+    color: white !important;
+    font-weight: 600;
+    border: 1px solid #c0392b !important;
+}
+
+/* Warna Hijau (Sukses / Completed) */
+.status-green {
+    background-color: #2ecc71 !important;
+    color: white !important;
+    font-weight: 600;
+    border: 1px solid #27ae60 !important;
+}
+
+/* Warna Biru Muda (Verifikasi / UNSC) */
+.status-blue {
+    background-color: #b2ebf2 !important; /* Cyan muda lembut */
+    color: #006064 !important; /* Teks biru tua agar terbaca */
+    font-weight: 600;
+    border: 1px solid #80deea !important;
+}
+
+/* Warna Kuning (Antri / Pending) */
+.status-yellow {
+    background-color: #fff9c4 !important; /* Kuning muda lembut */
+    color: #f57f17 !important; /* Teks oranye tua */
+    font-weight: 600;
+    border: 1px solid #fff59d !important;
+}
+
+/* Perbaiki ikon dropdown agar terlihat di background gelap (opsional) */
+.status-red option, .status-green option, .status-blue option, .status-yellow option {
+    background-color: white;
+    color: #333;
+}
+
+/* === TAMBAHAN UNTUK PERAPIAN TEXT ALIGNMENT === */
+
+/* 1. Header Tabel: Rata Tengah & Vertikal Tengah */
+.editable-table th {
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 12px 10px; /* Sedikit diperkecil padding kanan-kiri biar muat banyak */
+}
+
+/* 2. Isi Tabel Default: Rata Kiri (Untuk Nama, Memo, ID) */
+.editable-table td {
+    text-align: left;
+    vertical-align: middle;
+}
+
+/* 3. Khusus Kolom yang berisi Dropdown (Select): Rata Tengah */
+/* Ini akan membuat kolom STATUS dan VALIDASI TSEL otomatis ke tengah */
+.editable-table td:has(select) {
+    text-align: center;
+}
+
+/* (Alternatif jika browser lama tidak support :has) */
+.editable-table select {
+    text-align: center;
+    text-align-last: center; /* Chrome/Safari */
+}
+
+/* 4. Kolom Sticky Pertama (Biasanya No/ID): Rata Tengah */
+.editable-table td:nth-child(1) {
+    text-align: center !important;
+}
+
+/* 5. Mempercantik Dropdown */
+.editable-table select {
+    cursor: pointer;
+    font-weight: 500;
+    padding: 6px 4px;
+    border-radius: 20px; /* Membuat dropdown lebih bulat (Capsule shape) */
+}
+
+/* Agar teks di dalam dropdown tidak terlalu mepet */
+.editable-table option {
+    padding: 10px;
+}
+
+/* --- UPDATE COLOR CODING SESUAI VIDEO --- */
+
+/* 1. MERAH (CLEANSING, REQ, CANCEL) */
+.status-red {
+    background-color: #c0392b !important; /* Merah tua */
+    color: white !important;
+    font-weight: 600;
+}
+
+/* 2. KUNING/EMAS (ANTRI, DONE, RE-ORDER) */
+.status-yellow {
+    background-color: #f1c40f !important; /* Kuning Emas */
+    color: #000 !important; /* Teks Hitam agar terbaca */
+    font-weight: 600;
+}
+
+/* 3. HIJAU (COMPLETED) */
+.status-green {
+    background-color: #27ae60 !important; /* Hijau Segar */
+    color: white !important;
+    font-weight: 600;
+}
+
+/* 4. UNGU (MANJA) - BARU */
+.status-purple {
+    background-color: #8e44ad !important; /* Ungu */
+    color: white !important;
+    font-weight: 600;
+}
+
+/* 5. TOSCA/CYAN (KONFIRMASI) - BARU */
+.status-cyan {
+    background-color: #16a085 !important; /* Tosca Gelap */
+    color: white !important;
+    font-weight: 600;
+}
+
+/* 6. BIRU MUDA (UNSC, AB75) */
+.status-blue {
+    background-color: #d6eaf8 !important; /* Biru sangat muda */
+    color: #2c3e50 !important;
+    font-weight: 600;
+}
+
+/* Agar opsi di dalam dropdown tetap putih backgroundnya (supaya terbaca) */
+select option {
+    background-color: white;
+    color: black;
+}
+
+/* Style Khusus Input Teks di Tabel (NOTES ASO) */
+.text-input-table {
+    width: 100%;
+    min-width: 250px;
+    border: none;
+    background: transparent;
+    padding: 8px;
+    font-size: 13px;
+    color: #333;
+    border-bottom: 1px solid transparent; /* Garis bawah transparan default */
+    transition: all 0.3s;
+}
+
+.text-input-table:focus {
+    outline: none;
+    background-color: #fff;
+    border-bottom: 2px solid #3498db; /* Garis biru saat diketik */
+    border-radius: 4px;
+}
+
+/* === HEADER COLOR CODING  === */
+
+/* 1. AREA TELKOM AKSES (TATI/TL) - Warna Kuning */
+.header-yellow {
+    background-color: #d8b93b !important;
+    color: #000 !important; /* Teks hitam agar terbaca di kuning */
+    border-bottom: 2px solid #d4ac0d !important;
+}
+
+/* 2. AREA TIF (ASO) - Warna Cream/Kuning Pucat */
+.header-cream {
+    background-color: #fcf3cf !important; 
+    color: #5d4037 !important; /* Coklat tua agar kontras */
+    border-bottom: 2px solid #f9e79f !important;
+}
+
+/* 3. AREA TSEL - Warna Oranye */
+.header-orange {
+    background-color: #e67e22 !important;
+    color: #fff !important;
+    border-bottom: 2px solid #d35400 !important;
+}
+
+/* 4. AREA HELPER / LAINNYA - Warna Abu-abu */
+.header-grey {
+    background-color: #7f8c8d !important;
+    color: #fff !important;
+    border-bottom: 2px solid #626567 !important;
+}
+
+/* Pastikan Sticky Header tetap jalan dengan warna baru */
+.editable-table th.header-yellow,
+.editable-table th.header-cream,
+.editable-table th.header-orange,
+.editable-table th.header-grey {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+/* === INPUT & DROPDOWN (DENGAN LOGIKA ZOOM) === */
+.editable-table input[type="text"],
+.editable-table select {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    
+    /* [LOGIKA ZOOM] Input ikut membesar/mengecil */
+    font-size: calc(13px * var(--table-scale));
+    padding: calc(6px * var(--table-scale));
+    
+    transition: all 0.2s;
+}

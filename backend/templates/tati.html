@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan TATI{% endblock %}
+
+{% block content %}
+<div class="summary-container">
+  <h1 class="summary-title">📘 LAPORAN TATI</h1>
+
+  <!-- TABEL 1 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel TATI (B2:O10)</h2>
+    <div class="table-wrapper">
+      {% if header1 and data1 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header1 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data1 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel TATI (B2:O10).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 2 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel TATI2 (R2:AX10)</h2>
+    <div class="table-wrapper">
+      {% if header2 and data2 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header2 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data2 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel TATI2 (R2:AX10).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

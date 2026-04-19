@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FilterIN</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+</head>
+<body>
+
+  <nav class="sidebar">
+    <a href="{{ url_for('dashboard', page='dashboard') }}" class="logo">
+      <img src="https://i.pinimg.com/1200x/2b/9e/7a/2b9e7af804871845ea599a93c0aca75d.jpg" alt="Logo" class="logo-img">
+      <span class="logo-name">FilterIN</span>
+    </a>
+
+    <div class="menu-content">
+      <ul class="menu-items">
+        <li class="item">
+          <a href="{{ url_for('dashboard', page='dashboard') }}"><i class="fa-solid fa-chart-line"></i><span>Dashboard</span></a>
+        </li>
+        <li class="item">
+          <a href="{{ url_for('dashboard', page='upload') }}"><i class="fa-solid fa-upload"></i><span>Upload Data</span></a>
+        </li>
+
+        <li class="item">
+          <div class="submenu-item">
+            <span><i class="fa-solid fa-table"></i>Tabel</span>
+            <i class="fa-solid fa-chevron-right"></i>
+          </div>
+          <ul class="submenu">
+            <li><a href="{{ url_for('dashboard', page='tabel', kelas='05') }}">KPRO</a></li>
+            <li><a href="{{ url_for('dashboard', page='tabel', kelas='06') }}">BIMA</a></li>
+            <li><a href="{{ url_for('dashboard', page='tabel', kelas='04') }}">BIMA MASTER</a></li>
+          </ul>
+        </li>
+
+        <li class="item">
+          <a href="#"><i class="fa-solid fa-file-excel"></i><span>Sheet Kendala Master</span></a>
+        </li>
+        <li class="item">
+          <a href="#"><i class="fa-solid fa-file-circle-question"></i><span>Sheet UNSC</span></a>
+        </li>
+
+        <li class="item">
+          <div class="submenu-item">
+            <span><i class="fa-solid fa-flag"></i>Laporan</span>
+            <i class="fa-solid fa-chevron-right"></i>
+          </div>
+          <ul class="submenu">
+            <li><a href="#">Provi</a></li>
+            <li><a href="#">PS RE</a></li>
+            <li><a href="#">Datel</a></li>
+          </ul>
+        </li>
+      </ul>
+
+      <ul class="menu-items user-menu">
+        <li class="item">
+            <a href="{{ url_for('ganti_password') }}"><i class="fa-solid fa-key"></i><span>Ganti Password</span></a>
+        </li>
+        <li class="item">
+            <a href="{{ url_for('logout') }}"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></a>
+        </li>
+        <div class="user-info">
+            <span>Selamat datang, {{ user.nama }}</span>
+        </div>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="main-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flash-messages">
+          {% for category, message in messages %}
+            <li class="flash {{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <div class="content-wrapper {% if page == 'dashboard' %}dashboard-container{% endif %}">
+
+      {% if page == 'dashboard' %}
+        <div class="dashboard-text">
+          <h1>Dashboard</h1>
+          <p>Selamat datang di Dashboard, {{ user.nama }}. Silakan pilih menu di samping.</p>
+        </div>
+        <div class="dashboard-image">
+        </div>
+
+      {% elif page == 'upload' %}
+     <div class="upload-container">
+    <h1>Update Google Spreadsheet</h1>
+
+    <div class="form-wrapper">
+      <form action="/filter" method="POST" enctype="multipart/form-data">
+        <h2>Filter BIMA</h2>
+        <select name="kelas" required>
+          <option value="">Pilih Sheet</option>
+          <option value="06">BIMA</option>
+        </select><br><br>
+        <input type="file" name="file" accept=".xlsx,.xls" required><br><br>
+        <button type="submit">Update Spreadsheet (Filter)</button>
+      </form>
+    </div>
+
+    <hr>
+
+    <div class="form-section">
+      <form action="/hapus_kolom" method="POST" enctype="multipart/form-data">
+        <h2>Filter KPRO</h2>
+        <select name="kelas" required>
+          <option value="">Pilih Sheet</option>
+          <option value="05">KPRO</option>
+        </select><br><br>
+        <input type="file" name="file" accept=".xlsx,.xls" required><br><br>
+        <button type="submit">Update Spreadsheet (Hapus Kolom)</button>
+      </form>
+    </div>
+  </div>
+
+      {% elif page == 'tabel' %}
+  <div class="main-content">
+      <h1>Data Spreadsheet</h1>
+
+      <div class="tabel-controls">
+          <form method="get" action="{{ url_for('dashboard') }}">
+              <input type="hidden" name="page" value="tabel">
+              <label for="kelas">Pilih Kelas:</label>
+              <select name="kelas" id="kelas" onchange="this.form.submit()">
+                  <option value="04" {% if kelas == '04' %}selected{% endif %}>BIMA MASTER</option>
+                  <option value="05" {% if kelas == '05' %}selected{% endif %}>KPRO</option>
+                  <option value="06" {% if kelas == '06' %}selected{% endif %}>BIMA</option>
+              </select>
+          </form>
+      </div>
+
+      <div class="table-container">
+          {% if error %}
+              <div class="alert alert-danger">{{ error }}</div>
+          {% elif data and data[kelas] %}
+              <div class="table-wrapper">
+                  {{ data[kelas]|safe }}
+              </div>
+          {% else %}
+              <p>Tidak ada data untuk ditampilkan.</p>
+          {% endif %}
+      </div>
+
+
+      {% if pagination and pagination.total_rows > 0 %}
+      <div class="pagination-container">
+          <div class="pagination-info">
+              Showing {{ pagination.start_index + 1 }} to {{ min(pagination.start_index + pagination.per_page, pagination.total_rows) }} of {{ pagination.total_rows }} entries
+          </div>
+
+          <div class="pagination-controls">
+              {% if pagination.current_page > 1 %}
+                  <a href="{{ url_for('dashboard', page='tabel', kelas=kelas, p=pagination.current_page - 1) }}">Previous</a>
+              {% else %}
+                  <span class="disabled">Previous</span>
+              {% endif %}
+
+              {% set ns = namespace(ellipsis_printed=false) %}
+              {% set page_window = 2 %}
+
+              {% for page_num in range(1, pagination.total_pages + 1) %}
+                  {# Kondisi untuk menampilkan nomor halaman #}
+                  {% if page_num == 1 or
+                        page_num == pagination.total_pages or
+                        (page_num >= pagination.current_page - page_window and
+                         page_num <= pagination.current_page + page_window) %}
+
+                      {% set ns.ellipsis_printed = false %} {# Reset penanda elipsis #}
+                      {% if page_num == pagination.current_page %}
+                          <span class="active">{{ page_num }}</span>
+                      {% else %}
+                          <a href="{{ url_for('dashboard', page='tabel', kelas=kelas, p=page_num) }}">{{ page_num }}</a>
+                      {% endif %}
+                  {% else %}
+                      {# Tampilkan elipsis hanya sekali per jeda #}
+                      {% if not ns.ellipsis_printed %}
+                          <span class="ellipsis">...</span>
+                          {% set ns.ellipsis_printed = true %}
+                      {% endif %}
+                  {% endif %}
+              {% endfor %}
+              {% if pagination.current_page < pagination.total_pages %}
+                  <a href="{{ url_for('dashboard', page='tabel', kelas=kelas, p=pagination.current_page + 1) }}">Next</a>
+              {% else %}
+                  <span class="disabled">Next</span>
+              {% endif %}
+          </div>
+      </div>
+      {% endif %}
+  </div>
+
+  {% else %}
+      <p>Halaman tidak ditemukan.</p>
+  {% endif %}
+
+    </div>
+  </main>
+
+  <script src="/static/script.js"></script>
+
+</body>
+</html>

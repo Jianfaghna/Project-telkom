@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Upload Data - FilterIN{% endblock %}
+
+{% block content %}
+<div class="main-content upload-page" data-testid="upload-page">
+    <div class="upload-header">
+        <h1><i class="fa-solid fa-cloud-upload-alt"></i> Update Google Spreadsheet</h1>
+        <p>Pilih file Excel (.xls / .xlsx) untuk memfilter &amp; update data di Google Sheet otomatis.</p>
+    </div>
+
+    <!-- === Form Filter BIMA === -->
+    <form action="{{ url_for('filter_data') }}" method="POST" enctype="multipart/form-data" class="upload-card" id="form-bima" data-testid="form-bima">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h2><i class="fa-solid fa-filter" style="color:#0b3d91;"></i> Filter BIMA</h2>
+
+        <div class="form-group">
+            <label for="kelas-bima">Pilih Sheet:</label>
+            <select name="kelas" id="kelas-bima" required data-testid="kelas-bima">
+                <option value="06">BIMA</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="file-bima" class="upload-label">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>Choose File</span>
+            </label>
+            <input type="file" name="file" id="file-bima" class="upload-input" accept=".xlsx,.xls" data-testid="file-bima" required>
+            <span class="upload-filename">No file chosen</span>
+        </div>
+
+        <button type="submit" class="upload-submit-btn" data-testid="btn-submit-bima">
+            <i class="fa-solid fa-cloud-upload-alt"></i>
+            Update Spreadsheet (Filter WSA + CREATE/MIGRATE + WORKFAIL)
+        </button>
+    </form>
+
+    <!-- === Form Filter KPRO === -->
+    <form action="{{ url_for('hapus_kolom') }}" method="POST" enctype="multipart/form-data" class="upload-card" id="form-kpro" data-testid="form-kpro">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h2><i class="fa-solid fa-scissors" style="color:#059669;"></i> Filter KPRO (Hapus Kolom)</h2>
+
+        <div class="form-group">
+            <label for="kelas-kpro">Pilih Sheet:</label>
+            <select name="kelas" id="kelas-kpro" required data-testid="kelas-kpro">
+                <option value="05">KPRO</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="file-kpro" class="upload-label">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>Choose File</span>
+            </label>
+            <input type="file" name="file" id="file-kpro" class="upload-input" accept=".xlsx,.xls,.csv" data-testid="file-kpro" required>
+            <span class="upload-filename">No file chosen</span>
+        </div>
+
+        <button type="submit" class="upload-submit-btn" data-testid="btn-submit-kpro">
+            <i class="fa-solid fa-cloud-upload-alt"></i>
+            Update Spreadsheet (Hapus 4 Kolom)
+        </button>
+    </form>
+</div>
+
+<script>
+    document.querySelectorAll('.upload-input').forEach(inp => {
+        inp.addEventListener('change', e => {
+            const name = e.target.files[0]?.name || 'No file chosen';
+            const span = e.target.parentElement.querySelector('.upload-filename');
+            if (span) span.textContent = name;
+        });
+    });
+
+    document.querySelectorAll('form.upload-card').forEach(f => {
+        f.addEventListener('submit', () => window.showLoading('Mengunggah & memproses file...'));
+    });
+</script>
+{% endblock %}

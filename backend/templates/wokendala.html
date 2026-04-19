@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan WO KENDALA{% endblock %}
+
+{% block content %}
+<div class="summary-container">
+  <h1 class="summary-title">📘 LAPORAN WO KENDALA</h1>
+
+  <!-- TABEL 1 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel WO KENDALA (K24:R59)</h2>
+    <div class="table-wrapper">
+      {% if header1 and data1 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header1 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data1 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel WO KENDALA (K24:R59).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TABEL 2 -->
+  <div class="table-section">
+    <h2 class="table-title">Tabel Tambahan (T23:AL59)</h2>
+    <div class="table-wrapper">
+      {% if header2 and data2 %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            {% for h in header2 %}
+              <th>{{ h }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in data2 %}
+            <tr>
+              {% for c in row %}
+                <td>{{ c }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-warning text-center mt-3">
+        Tidak ada data untuk Tabel Tambahan (T23:AL59).
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
