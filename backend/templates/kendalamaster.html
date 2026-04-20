@@ -169,9 +169,9 @@
                         <th class="col-sticky-1" style="width:45px; left:0;">#</th>
                         {% for h in header %}
                             {% set header_class = '' %}
-                            {% if h in ['NOTES GDOC LAPORAN TATI', 'UPDATE TATI', 'TANGGAL IZIN OK (TA)', 'IS ORDER HI?', 'DONE TATI', 'STATUS ORDER BY TL', 'NOTES TL'] %}
+                            {% if h in ['NOTES GDOC LAPORAN TATI', 'UPDATE TATI', 'TANGGAL IZIN OK (TA)', 'IS ORDER HI?', 'DONE TATI', 'STATUS ORDER BY TL', 'NOTES TL', 'ANTRI TATI'] %}
                                 {% set header_class = 'header-yellow' %}
-                            {% elif h in ['FEEDBACK ASO', 'TGL FEEDBACK', 'NOTES ASO'] %}
+                            {% elif h in ['FEEDBACK ASO', 'TGL FEEDBACK', 'NOTES ASO', 'ACTUAL KENDALA'] %}
                                 {% set header_class = 'header-cream' %}
                             {% elif h in ['FEEDBACK TSEL', 'TIME', 'NOTES TSEL'] %}
                                 {% set header_class = 'header-orange' %}
@@ -186,6 +186,10 @@
                     </tr>
                 </thead>
                 <tbody>
+                {% set YELLOW_COLS = ['NOTES GDOC LAPORAN TATI','UPDATE TATI','TANGGAL IZIN OK (TA)','IS ORDER HI?','DONE TATI','STATUS ORDER BY TL','NOTES TL','ANTRI TATI'] %}
+                {% set CREAM_COLS = ['FEEDBACK ASO','TGL FEEDBACK','NOTES ASO','ACTUAL KENDALA'] %}
+                {% set ORANGE_COLS = ['FEEDBACK TSEL','TIME','NOTES TSEL'] %}
+                {% set GREY_COLS = ['KET TAMBAHAN','TYPE ORDER','CEK DB UNSC','STATUS','KATEGORI','STATUS_UIM','PERIODE'] %}
                 {% for row in data %}
                     {% set loop_index = loop.index0 %}
                     {% set row_num = sheet_rows[loop_index] %}
@@ -201,7 +205,13 @@
                         {% for i in range(header|length) %}
                             {% set current_header = header[i] %}
                             {% set cell_val = row[i] if i < row|length else '' %}
-                            <td class="col-c-{{ i }} {% if current_header == 'ORDER_ID' %}col-order-id{% endif %}" title="{{ cell_val }}" data-col="{{ current_header }}">
+                            {% set cell_class = '' %}
+                            {% if current_header in YELLOW_COLS %}{% set cell_class = 'col-yellow' %}
+                            {% elif current_header in CREAM_COLS %}{% set cell_class = 'col-cream' %}
+                            {% elif current_header in ORANGE_COLS %}{% set cell_class = 'col-orange' %}
+                            {% elif current_header in GREY_COLS %}{% set cell_class = 'col-grey' %}
+                            {% endif %}
+                            <td class="col-c-{{ i }} {{ cell_class }} {% if current_header == 'ORDER_ID' %}col-order-id{% endif %}" title="{{ cell_val }}" data-col="{{ current_header }}">
                                 {{ cell_val }}
                             </td>
                         {% endfor %}

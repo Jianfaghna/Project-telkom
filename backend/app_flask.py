@@ -856,13 +856,36 @@ def kendala_master():
         data_to_render = display_df.values.tolist()
         header_to_render = list(display_df.columns)
 
-        # Options (soft fail)
+        # Options (soft fail) — coba Options sheet dulu, fallback ke unique values dari data
         try:
             opt_ws = get_worksheet(SPREADSHEET_IDS['kendala'], 'Options')
             feedback_options = [x for x in opt_ws.col_values(2)[1:] if x]
             actual_options = [x for x in opt_ws.col_values(1)[1:] if x]
         except Exception:
             pass
+        # Fallback: extract unique values dari seluruh data sheet
+        if not feedback_options and 'FEEDBACK ASO' in df.columns:
+            feedback_options = sorted({
+                str(v).strip() for v in df['FEEDBACK ASO'].tolist()
+                if v and str(v).strip() and str(v).strip().upper() != 'NAN'
+            })
+        if not actual_options and 'ACTUAL KENDALA' in df.columns:
+            actual_options = sorted({
+                str(v).strip() for v in df['ACTUAL KENDALA'].tolist()
+                if v and str(v).strip() and str(v).strip().upper() != 'NAN'
+            })
+        # Fallback 2: hardcoded defaults supaya dropdown tidak pernah kosong
+        if not feedback_options:
+            feedback_options = [
+                'ANTRI TATI', 'DONE TATI', 'VERIFIKASI UNSC', 'UNSC',
+                'FOLLOW UP', 'PS', 'CANCEL', 'REVOKE',
+            ]
+        if not actual_options:
+            actual_options = [
+                'GANGGUAN PERANGKAT', 'GANGGUAN KABEL', 'GANGGUAN ODP',
+                'GANGGUAN OLT', 'SALAH KONFIGURASI', 'CUSTOMER TIDAK ADA',
+                'MATI LISTRIK', 'PS COMPLETED',
+            ]
 
         # Active locks for page
         active_locks = get_active_locks(SHEET_NAMES['kendala']['kendalamaster'])
