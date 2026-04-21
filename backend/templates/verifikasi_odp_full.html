@@ -1,86 +1,140 @@
 {% extends 'base.html' %}
-{% block title %}Verifikasi ODP FULL{% endblock %}
+{% block title %}Verifikasi ODP FULL - FilterIN{% endblock %}
+
+{% block head_extra %}
+<style>
+/* ── Dark mode patches ── */
+[data-theme="dark"] .filter-container {
+    background: var(--surface, #1a2332) !important;
+    border: 1px solid var(--border, #2d3748);
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .filter-title { color: #a78bfa !important; }
+[data-theme="dark"] .filter-select {
+    background: var(--surface-2, #111827) !important;
+    border-color: var(--border-strong, #475569) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .filter-select option { background: #1a2332; color: #e2e8f0; }
+[data-theme="dark"] .filter-btn { background: #7f1d1d !important; }
+[data-theme="dark"] .filter-btn:hover { background: #991b1b !important; }
+
+/* Tabel data */
+[data-theme="dark"] .data-table {
+    background: var(--surface, #1a2332) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .data-table th {
+    background-color: #3d2a2a !important;
+    color: #fca5a5 !important;
+    border-bottom-color: var(--border, #2d3748) !important;
+}
+[data-theme="dark"] .data-table td {
+    border-bottom-color: var(--border, #2d3748) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .data-table tbody tr:nth-child(even) { background: var(--surface-2, #111827) !important; }
+[data-theme="dark"] .data-table tbody tr:hover { background: #22304a !important; }
+
+/* h1, p */
+[data-theme="dark"] .main-content h1 { color: var(--text, #e2e8f0); }
+[data-theme="dark"] .main-content > p { color: var(--text-muted, #94a3b8); }
+
+/* Empty state */
+[data-theme="dark"] .odp-empty {
+    background: var(--surface, #1a2332) !important;
+    color: var(--text-muted, #94a3b8) !important;
+}
+
+/* Table container */
+[data-theme="dark"] .table-container { background: transparent; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="main-content">
-  <h1>Verifikasi ODP FULL</h1>
-  <p>Halaman untuk melakukan verifikasi data ODP FULL.</p>
+    <h1 style="color:var(--text,#1e293b);"><i class="fa-solid fa-user-check"></i> Verifikasi ODP FULL</h1>
+    <p style="color:var(--text-muted,#555); margin-top:-10px; margin-bottom:16px;">Halaman untuk melakukan verifikasi data ODP FULL.</p>
 
-  <div class="filter-container">
-    <h2 class="filter-title">VALIDASI ODP FULL</h2>
+    <!-- FILTER -->
+    <div class="filter-container" style="border-radius:12px; padding:20px; margin-top:0; background:#f9f9f9;">
+        <h2 class="filter-title" style="font-size:16px; font-weight:bold; margin-bottom:15px;">
+            <i class="fa-solid fa-filter"></i> VALIDASI ODP FULL
+        </h2>
+        <form method="GET" action="{{ url_for('verifikasi_odp_full') }}" class="filter-form">
+            <select name="witel" class="filter-select">
+                <option value="">WITEL</option>
+                {% for w in witels %}
+                    <option value="{{ w }}" {% if request.args.get('witel') == w %}selected{% endif %}>{{ w }}</option>
+                {% endfor %}
+            </select>
+            <select name="datel" class="filter-select">
+                <option value="">DATEL</option>
+                {% for d in datels %}
+                    <option value="{{ d }}" {% if request.args.get('datel') == d %}selected{% endif %}>{{ d }}</option>
+                {% endfor %}
+            </select>
+            <select name="sto" class="filter-select">
+                <option value="">STO</option>
+                {% for s in stos %}
+                    <option value="{{ s }}" {% if request.args.get('sto') == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+            <select name="periode" class="filter-select">
+                <option value="">PERIODE BULAN</option>
+                {% for p in periodes %}
+                    <option value="{{ p }}" {% if request.args.get('periode') == p %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+            </select>
+            <select name="jenis" class="filter-select">
+                <option value="">JENIS TRANSAKSI</option>
+                {% for j in jenis_transaksi %}
+                    <option value="{{ j }}" {% if request.args.get('jenis') == j %}selected{% endif %}>{{ j }}</option>
+                {% endfor %}
+            </select>
+            <select name="status" class="filter-select">
+                <option value="">STATUS</option>
+                {% for st in statuses %}
+                    <option value="{{ st }}" {% if request.args.get('status') == st %}selected{% endif %}>{{ st }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="filter-btn">
+                <i class="fa-solid fa-filter"></i> Tampilkan
+            </button>
+            <a href="{{ url_for('verifikasi_odp_full') }}"
+               style="padding:10px 14px; border-radius:6px; border:1px solid #d9534f; color:#d9534f; text-decoration:none; font-size:14px; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+                <i class="fa-solid fa-xmark"></i> Reset
+            </a>
+        </form>
+    </div>
 
-    <form method="GET" action="{{ url_for('verifikasi_odp_full') }}" class="filter-form">
-      <select name="witel" class="filter-select">
-        <option value="">WITEL</option>
-        {% for w in witels %}
-          <option value="{{ w }}" {% if request.args.get('witel') == w %}selected{% endif %}>{{ w }}</option>
-        {% endfor %}
-      </select>
-
-      <select name="datel" class="filter-select">
-        <option value="">DATEL</option>
-        {% for d in datels %}
-          <option value="{{ d }}" {% if request.args.get('datel') == d %}selected{% endif %}>{{ d }}</option>
-        {% endfor %}
-      </select>
-
-      <select name="sto" class="filter-select">
-        <option value="">STO</option>
-        {% for s in stos %}
-          <option value="{{ s }}" {% if request.args.get('sto') == s %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
-
-      <select name="periode" class="filter-select">
-        <option value="">PERIODE BULAN</option>
-        {% for p in periodes %}
-          <option value="{{ p }}" {% if request.args.get('periode') == p %}selected{% endif %}>{{ p }}</option>
-        {% endfor %}
-      </select>
-
-      <select name="jenis" class="filter-select">
-        <option value="">JENIS TRANSAKSI</option>
-        {% for j in jenis_transaksi %}
-          <option value="{{ j }}" {% if request.args.get('jenis') == j %}selected{% endif %}>{{ j }}</option>
-        {% endfor %}
-      </select>
-
-      <select name="status" class="filter-select">
-        <option value="">STATUS</option>
-        {% for st in statuses %}
-          <option value="{{ st }}" {% if request.args.get('status') == st %}selected{% endif %}>{{ st }}</option>
-        {% endfor %}
-      </select>
-
-      <button type="submit" class="filter-btn">
-        <i class="fa-solid fa-filter"></i> Tampilkan
-      </button>
-    </form>
-  </div>
-
-  {% if data %}
-  <div class="table-container">
-    <table class="data-table">
-      <thead>
-        <tr>
-          {% for h in header %}
-            <th>{{ h }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in data %}
-          <tr>
-            {% for cell in row %}
-              <td>{{ cell }}</td>
-            {% endfor %}
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p style="margin-top:20px;">Tidak ada data untuk ditampilkan.</p>
-  {% endif %}
+    <!-- TABEL -->
+    {% if data %}
+    <div class="table-container" style="margin-top:20px; overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    {% for h in header %}
+                        <th>{{ h }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data %}
+                    <tr>
+                        {% for cell in row %}
+                            <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="odp-empty" style="text-align:center; padding:50px; background:#fff; border-radius:12px; margin-top:20px;">
+        <i class="fa-solid fa-magnifying-glass" style="font-size:48px; color:#cbd5e1;"></i>
+        <p style="font-size:16px; margin-top:14px;">Pilih filter di atas lalu tekan <strong>Tampilkan</strong> untuk melihat data.</p>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

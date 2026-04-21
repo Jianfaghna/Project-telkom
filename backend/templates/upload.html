@@ -1,79 +1,325 @@
 {% extends "base.html" %}
-{% block title %}Upload Data - FilterIN{% endblock %}
+{% block title %}Upload Data{% endblock %}
+
+{% block head_extra %}
+<style>
+/* ── Dark mode patches ── */
+[data-theme="dark"] .upload-card {
+    background: var(--surface, #1a2332);
+    border-color: var(--border, #2d3748);
+    color: var(--text, #e2e8f0);
+}
+[data-theme="dark"] .upload-card h2 {
+    color: var(--text, #e2e8f0);
+    border-bottom-color: var(--border, #2d3748);
+}
+[data-theme="dark"] .upload-header h1 { color: var(--text, #e2e8f0); }
+[data-theme="dark"] .upload-header p  { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .form-group label { color: var(--text, #e2e8f0); }
+[data-theme="dark"] .form-group select,
+[data-theme="dark"] .upload-label {
+    background: var(--surface-2, #111827);
+    border-color: var(--border-strong, #475569);
+    color: var(--text, #e2e8f0);
+}
+[data-theme="dark"] .upload-label i { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .upload-label:hover { background: var(--border, #2d3748); }
+[data-theme="dark"] .upload-filename { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .upload-submit-btn {
+    background-color: #1e4080;
+}
+[data-theme="dark"] .upload-submit-btn:hover { background-color: #2563ab; }
+[data-theme="dark"] .upload-submit-btn:disabled {
+    background-color: #374151 !important;
+    color: #6b7280 !important;
+    cursor: not-allowed;
+}
+
+/* ── Upload state feedback ── */
+.upload-card { position: relative; transition: box-shadow 0.2s; }
+
+/* File terpilih — border hijau */
+.upload-card.file-selected {
+    border-color: #22c55e !important;
+    box-shadow: 0 0 0 3px rgba(34,197,94,0.15) !important;
+}
+
+/* Nama file terpilih — tampil hijau */
+.upload-filename.has-file {
+    color: #16a34a;
+    font-style: normal;
+    font-weight: 600;
+}
+[data-theme="dark"] .upload-filename.has-file { color: #4ade80; }
+
+/* Error */
+.upload-error {
+    display: none;
+    color: #dc3545;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+}
+[data-theme="dark"] .upload-error {
+    background: #3b1111;
+    border-color: #b91c1c;
+    color: #fca5a5;
+}
+.upload-error.show { display: flex; align-items: center; gap: 8px; }
+
+/* Loading spinner di tombol */
+.upload-submit-btn .btn-spinner {
+    display: none;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 8px;
+}
+.upload-submit-btn.loading .btn-spinner { display: inline-block; }
+.upload-submit-btn.loading .btn-icon    { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Progress bar tipis di bawah kartu */
+.upload-progress {
+    height: 3px;
+    background: #e2e8f0;
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+    margin-top: 16px;
+    display: none;
+}
+.upload-progress.show { display: block; }
+.upload-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #2563eb, #22c55e);
+    transition: width 0.3s ease;
+    animation: indeterminate 1.5s ease-in-out infinite;
+}
+@keyframes indeterminate {
+    0%   { width: 0%;   margin-left: 0%; }
+    50%  { width: 60%;  margin-left: 20%; }
+    100% { width: 0%;   margin-left: 100%; }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="main-content upload-page" data-testid="upload-page">
+<div class="main-content upload-page">
     <div class="upload-header">
-        <h1><i class="fa-solid fa-cloud-upload-alt"></i> Update Google Spreadsheet</h1>
-        <p>Pilih file Excel (.xls / .xlsx) untuk memfilter &amp; update data di Google Sheet otomatis.</p>
+        <h1>Update Google Spreadsheet</h1>
+        <p>Pilih file Excel (.xls, .xlsx) lalu tekan tombol Update untuk memproses data.</p>
     </div>
 
-    <!-- === Form Filter BIMA === -->
-    <form action="{{ url_for('filter_data') }}" method="POST" enctype="multipart/form-data" class="upload-card" id="form-bima" data-testid="form-bima">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <h2><i class="fa-solid fa-filter" style="color:#0b3d91;"></i> Filter BIMA</h2>
+    <!-- ── Form Filter BIMA ── -->
+    <div class="upload-card" id="card-bima">
+        <h2><i class="fa-solid fa-filter" style="color:#2563eb; margin-right:8px;"></i>Filter BIMA</h2>
 
         <div class="form-group">
             <label for="kelas-bima">Pilih Sheet:</label>
-            <select name="kelas" id="kelas-bima" required data-testid="kelas-bima">
+            <select name="kelas" id="kelas-bima">
                 <option value="06">BIMA</option>
             </select>
         </div>
 
         <div class="form-group">
-            <label for="file-bima" class="upload-label">
-                <i class="fa-solid fa-folder-open"></i>
-                <span>Choose File</span>
-            </label>
-            <input type="file" name="file" id="file-bima" class="upload-input" accept=".xlsx,.xls" data-testid="file-bima" required>
-            <span class="upload-filename">No file chosen</span>
+            <label>File Excel:</label>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <label for="file-bima" class="upload-label" id="label-bima">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span style="margin-left:6px;">Pilih File</span>
+                </label>
+                <input type="file" id="file-bima" class="upload-input" accept=".xlsx,.xls">
+                <span class="upload-filename" id="fname-bima">Belum ada file dipilih</span>
+            </div>
         </div>
 
-        <button type="submit" class="upload-submit-btn" data-testid="btn-submit-bima">
-            <i class="fa-solid fa-cloud-upload-alt"></i>
-            Update Spreadsheet (Filter WSA + CREATE/MIGRATE + WORKFAIL)
-        </button>
-    </form>
+        <div class="upload-error" id="err-bima">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span id="err-bima-text"></span>
+        </div>
 
-    <!-- === Form Filter KPRO === -->
-    <form action="{{ url_for('hapus_kolom') }}" method="POST" enctype="multipart/form-data" class="upload-card" id="form-kpro" data-testid="form-kpro">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <h2><i class="fa-solid fa-scissors" style="color:#059669;"></i> Filter KPRO (Hapus Kolom)</h2>
+        <button type="button" class="upload-submit-btn" id="btn-bima" onclick="submitUpload('bima')">
+            <span class="btn-spinner"></span>
+            <i class="fa-solid fa-cloud-upload-alt btn-icon" style="margin-right:8px;"></i>
+            Update Spreadsheet (Filter BIMA)
+        </button>
+
+        <div class="upload-progress" id="prog-bima">
+            <div class="upload-progress-bar"></div>
+        </div>
+    </div>
+
+    <!-- ── Form Filter KPRO ── -->
+    <div class="upload-card" id="card-kpro">
+        <h2><i class="fa-solid fa-file-excel" style="color:#16a34a; margin-right:8px;"></i>Filter KPRO</h2>
 
         <div class="form-group">
             <label for="kelas-kpro">Pilih Sheet:</label>
-            <select name="kelas" id="kelas-kpro" required data-testid="kelas-kpro">
+            <select name="kelas" id="kelas-kpro">
                 <option value="05">KPRO</option>
             </select>
         </div>
 
         <div class="form-group">
-            <label for="file-kpro" class="upload-label">
-                <i class="fa-solid fa-folder-open"></i>
-                <span>Choose File</span>
-            </label>
-            <input type="file" name="file" id="file-kpro" class="upload-input" accept=".xlsx,.xls,.csv" data-testid="file-kpro" required>
-            <span class="upload-filename">No file chosen</span>
+            <label>File Excel:</label>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <label for="file-kpro" class="upload-label" id="label-kpro">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span style="margin-left:6px;">Pilih File</span>
+                </label>
+                <input type="file" id="file-kpro" class="upload-input" accept=".xlsx,.xls">
+                <span class="upload-filename" id="fname-kpro">Belum ada file dipilih</span>
+            </div>
         </div>
 
-        <button type="submit" class="upload-submit-btn" data-testid="btn-submit-kpro">
-            <i class="fa-solid fa-cloud-upload-alt"></i>
-            Update Spreadsheet (Hapus 4 Kolom)
+        <div class="upload-error" id="err-kpro">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span id="err-kpro-text"></span>
+        </div>
+
+        <button type="button" class="upload-submit-btn" id="btn-kpro" onclick="submitUpload('kpro')">
+            <span class="btn-spinner"></span>
+            <i class="fa-solid fa-cloud-upload-alt btn-icon" style="margin-right:8px;"></i>
+            Update Spreadsheet (Filter KPRO)
         </button>
-    </form>
+
+        <div class="upload-progress" id="prog-kpro">
+            <div class="upload-progress-bar"></div>
+        </div>
+    </div>
 </div>
 
 <script>
-    document.querySelectorAll('.upload-input').forEach(inp => {
-        inp.addEventListener('change', e => {
-            const name = e.target.files[0]?.name || 'No file chosen';
-            const span = e.target.parentElement.querySelector('.upload-filename');
-            if (span) span.textContent = name;
-        });
-    });
+// ── File input change handlers ──
+['bima', 'kpro'].forEach(function(key) {
+    var input = document.getElementById('file-' + key);
+    if (!input) return;
+    input.addEventListener('change', function() {
+        var fname  = document.getElementById('fname-' + key);
+        var err    = document.getElementById('err-' + key);
+        var card   = document.getElementById('card-' + key);
 
-    document.querySelectorAll('form.upload-card').forEach(f => {
-        f.addEventListener('submit', () => window.showLoading('Mengunggah & memproses file...'));
+        // Reset error
+        err.classList.remove('show');
+
+        if (this.files && this.files.length > 0) {
+            var file = this.files[0];
+            var ext  = file.name.split('.').pop().toLowerCase();
+
+            if (!['xlsx','xls'].includes(ext)) {
+                // Format salah — tampilkan error langsung
+                showError(key, 'Format file tidak valid! Gunakan file .xlsx atau .xls');
+                this.value = '';
+                fname.textContent = 'Belum ada file dipilih';
+                fname.classList.remove('has-file');
+                card.classList.remove('file-selected');
+                return;
+            }
+
+            var sizeKB = (file.size / 1024).toFixed(1);
+            var sizeTxt = file.size >= 1024*1024
+                ? (file.size / (1024*1024)).toFixed(1) + ' MB'
+                : sizeKB + ' KB';
+
+            fname.textContent = file.name + ' (' + sizeTxt + ')';
+            fname.classList.add('has-file');
+            card.classList.add('file-selected');
+        } else {
+            fname.textContent = 'Belum ada file dipilih';
+            fname.classList.remove('has-file');
+            card.classList.remove('file-selected');
+        }
     });
+});
+
+// ── Submit dengan validasi ──
+function submitUpload(key) {
+    var fileInput = document.getElementById('file-' + key);
+    var btn       = document.getElementById('btn-' + key);
+    var prog      = document.getElementById('prog-' + key);
+    var actionUrl = key === 'bima' ? '{{ url_for("filter_data") }}' : '{{ url_for("hapus_kolom") }}';
+    var kelas     = document.getElementById('kelas-' + key).value;
+
+    // Validasi: file belum dipilih
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showError(key, 'Harap pilih file Excel terlebih dahulu sebelum menekan tombol ini.');
+        // Getar kartu (shake animation)
+        var card = document.getElementById('card-' + key);
+        card.style.animation = 'none';
+        card.offsetHeight; // reflow
+        card.style.animation = 'shake 0.4s ease';
+        return;
+    }
+
+    // Validasi ekstensi ulang (jaga-jaga)
+    var ext = fileInput.files[0].name.split('.').pop().toLowerCase();
+    if (!['xlsx','xls'].includes(ext)) {
+        showError(key, 'Format file tidak valid! Gunakan file .xlsx atau .xls');
+        return;
+    }
+
+    // Sembunyikan error lama, aktifkan loading state
+    document.getElementById('err-' + key).classList.remove('show');
+    btn.classList.add('loading');
+    btn.disabled = true;
+    prog.classList.add('show');
+
+    // Submit via FormData
+    var formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('kelas', kelas);
+
+    fetch(actionUrl, {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(response) {
+        // Flask redirect → ikuti ke halaman tujuan
+        if (response.redirected) {
+            window.location.href = response.url;
+        } else {
+            return response.text().then(function(html) {
+                // Jika ada flash error di response
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                var flashErr = doc.querySelector('.flash.error');
+                if (flashErr) {
+                    showError(key, flashErr.textContent.trim());
+                } else {
+                    window.location.reload();
+                }
+            });
+        }
+    })
+    .catch(function(err) {
+        showError(key, 'Gagal terhubung ke server: ' + err.message);
+    })
+    .finally(function() {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+        prog.classList.remove('show');
+    });
+}
+
+function showError(key, msg) {
+    var errEl   = document.getElementById('err-' + key);
+    var errText = document.getElementById('err-' + key + '-text');
+    errText.textContent = msg;
+    errEl.classList.add('show');
+    // Scroll ke error
+    errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Shake animation
+var style = document.createElement('style');
+style.textContent = '@keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }';
+document.head.appendChild(style);
 </script>
 {% endblock %}

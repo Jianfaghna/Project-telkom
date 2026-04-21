@@ -1,93 +1,184 @@
 {% extends 'base.html' %}
+{% block title %}Tampilan Tabel - FilterIN{% endblock %}
 
-{% block title %}Tampilan Tabel{% endblock %}
+{% block head_extra %}
+<style>
+/* ── Dark mode patches ── */
+[data-theme="dark"] .main-content h1 { color: var(--text, #e2e8f0); }
+
+[data-theme="dark"] .tabel-controls label { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .tabel-controls select {
+    background: var(--surface-2, #111827) !important;
+    border-color: var(--border-strong, #475569) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+
+/* Tabel dari pandas .to_html() pakai class="data" */
+[data-theme="dark"] .table-wrapper { border-color: var(--border, #2d3748) !important; }
+[data-theme="dark"] .table-wrapper table {
+    background: var(--surface, #1a2332) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .table-wrapper thead th {
+    background: #0b3d91 !important;
+    color: #fff !important;
+    border-color: var(--border, #2d3748) !important;
+}
+[data-theme="dark"] .table-wrapper tbody td {
+    background: var(--surface, #1a2332) !important;
+    color: var(--text, #e2e8f0) !important;
+    border-color: var(--border, #2d3748) !important;
+}
+[data-theme="dark"] .table-wrapper tbody tr:nth-child(even) td {
+    background: var(--surface-2, #111827) !important;
+}
+[data-theme="dark"] .table-wrapper tbody tr:hover td {
+    background: #22304a !important;
+    color: #93c5fd !important;
+}
+/* Override inline style dari pandas */
+[data-theme="dark"] th, [data-theme="dark"] td {
+    border-color: var(--border, #2d3748) !important;
+}
+
+/* Pagination jump input */
+[data-theme="dark"] #jumpPageInput {
+    background: var(--surface-2, #111827) !important;
+    border-color: var(--border-strong, #475569) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .pagination-controls a,
+[data-theme="dark"] .pagination-controls span { color: var(--text, #e2e8f0); }
+[data-theme="dark"] .pagination-info { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .pagination-controls .disabled { color: var(--text-muted, #64748b); }
+
+/* Empty state */
+[data-theme="dark"] .tabel-empty { color: var(--text-muted, #94a3b8) !important; }
+
+/* Alert */
+[data-theme="dark"] .alert-danger {
+    background: #3b1111 !important;
+    border-color: #b91c1c !important;
+    color: #fca5a5 !important;
+}
+
+/* Tabel controls */
+.tabel-controls {
+    background: var(--surface, #fff);
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border, #e0e0e0);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.tabel-controls label { font-weight: 600; font-size: 13px; color: var(--text-muted, #555); }
+.tabel-controls select {
+    padding: 8px 12px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--surface, #fff);
+    color: var(--text, #333);
+    cursor: pointer;
+}
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="main-content">
-  <h1>Data Spreadsheet</h1>
-  <div class="tabel-controls">
-    <form method="get" action="{{ url_for('tabel') }}">
-      <label for="kelas">Pilih Kelas:</label>
-      <select name="kelas" id="kelas" onchange="this.form.submit()">
-        <option value="04" {% if kelas == '04' %}selected{% endif %}>BIMA MASTER</option>
-        <option value="05" {% if kelas == '05' %}selected{% endif %}>KPRO</option>
-        <option value="06" {% if kelas == '06' %}selected{% endif %}>BIMA</option>
-      </select>
-    </form>
-  </div>
-  <div class="table-container">
-    {% if error %}
-      <div class="alert alert-danger">{{ error }}</div>
-    {% elif data and data[kelas] %}
-      <div class="table-wrapper">{{ data[kelas]|safe }}</div>
-    {% else %}
-      <p>Tidak ada data untuk ditampilkan.</p>
+    <h1 style="color:var(--text,#1e293b);"><i class="fa-solid fa-table"></i> Data Spreadsheet</h1>
+
+    <!-- Pilih Kelas -->
+    <div class="tabel-controls">
+        <label for="kelas"><i class="fa-solid fa-layer-group"></i> Pilih Sheet:</label>
+        <form method="get" action="{{ url_for('tabel') }}" style="margin:0;">
+            <select name="kelas" id="kelas" onchange="this.form.submit()">
+                <option value="04" {% if kelas == '04' %}selected{% endif %}>BIMA MASTER</option>
+                <option value="05" {% if kelas == '05' %}selected{% endif %}>KPRO</option>
+                <option value="06" {% if kelas == '06' %}selected{% endif %}>BIMA</option>
+            </select>
+        </form>
+        {% if pagination and pagination.total_rows > 0 %}
+        <span style="font-size:13px; color:var(--text-muted,#64748b); margin-left:auto;">
+            <i class="fa-solid fa-database"></i> {{ pagination.total_rows }} baris data
+        </span>
+        {% endif %}
+    </div>
+
+    <!-- Tabel -->
+    <div class="table-container">
+        {% if error %}
+            <div class="alert-danger" style="padding:14px; background:#fee2e2; color:#991b1b; border-radius:6px; border:1px solid #fca5a5;">
+                <i class="fa-solid fa-triangle-exclamation"></i> {{ error }}
+            </div>
+        {% elif data and data[kelas] %}
+            <div class="table-wrapper" style="overflow-x:auto; border:1px solid var(--border,#ddd); border-radius:6px;">
+                {{ data[kelas]|safe }}
+            </div>
+        {% else %}
+            <div class="tabel-empty" style="text-align:center; padding:50px; color:#777;">
+                <i class="fa-solid fa-inbox" style="font-size:48px; color:#cbd5e1; display:block; margin-bottom:14px;"></i>
+                Tidak ada data untuk ditampilkan.
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination and pagination.total_rows > 0 %}
+    <div class="pagination-container" style="margin-top:16px;">
+        <div class="pagination-info" style="color:var(--text-muted,#555);">
+            Showing {{ pagination.start_index + 1 }} to
+            {{ min(pagination.start_index + pagination.per_page, pagination.total_rows) }}
+            of {{ pagination.total_rows }} entries
+        </div>
+        <div class="pagination-controls">
+            {% if pagination.current_page > 1 %}
+                <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page - 1) }}">Previous</a>
+            {% else %}
+                <span class="disabled">Previous</span>
+            {% endif %}
+
+            {% set ns = namespace(ep=false) %}
+            {% for pn in range(1, pagination.total_pages + 1) %}
+                {% if pn==1 or pn==pagination.total_pages or (pn>=pagination.current_page-2 and pn<=pagination.current_page+2) %}
+                    {% set ns.ep = false %}
+                    {% if pn == pagination.current_page %}<span class="active">{{ pn }}</span>
+                    {% else %}<a href="{{ url_for('tabel', kelas=kelas, p=pn) }}">{{ pn }}</a>{% endif %}
+                {% else %}
+                    {% if not ns.ep %}<span class="ellipsis">...</span>{% set ns.ep = true %}{% endif %}
+                {% endif %}
+            {% endfor %}
+
+            {% if pagination.current_page < pagination.total_pages %}
+                <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page + 1) }}">Next</a>
+            {% else %}
+                <span class="disabled">Next</span>
+            {% endif %}
+
+            <div style="display:inline-flex; align-items:center; gap:5px; margin-left:15px; border-left:1px solid var(--border,#ccc); padding-left:15px;">
+                <span style="font-size:13px; color:var(--text-muted,#555);">Ke Hal:</span>
+                <input type="number" id="jumpPageInput" min="1" max="{{ pagination.total_pages }}"
+                       style="width:50px; padding:4px; border:1px solid var(--border,#ccc); border-radius:4px; text-align:center; background:var(--surface,#fff); color:var(--text,#333);"
+                       onkeypress="if(event.key==='Enter') jumpToPage()">
+                <button onclick="jumpToPage()"
+                        style="padding:4px 10px; background:#2c3e50; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">Go</button>
+            </div>
+        </div>
+    </div>
     {% endif %}
-  </div>
+</div>
 
-  {% if pagination and pagination.total_rows > 0 %}
-  <div class="pagination-container">
-      <div class="pagination-info">
-          Showing {{ pagination.start_index + 1 }} to {{ min(pagination.start_index + pagination.per_page, pagination.total_rows) }} of {{ pagination.total_rows }} entries
-      </div>
-
-      <div class="pagination-controls">
-          {% if pagination.current_page > 1 %}
-              <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page - 1) }}">Previous</a>
-          {% else %}
-              <span class="disabled">Previous</span>
-          {% endif %}
-
-          {% set ns = namespace(ellipsis_printed=false) %}
-          {% set page_window = 2 %}
-
-          {% for page_num in range(1, pagination.total_pages + 1) %}
-              {# Kondisi untuk menampilkan nomor halaman #}
-              {% if page_num == 1 or
-                    page_num == pagination.total_pages or
-                    (page_num >= pagination.current_page - page_window and
-                     page_num <= pagination.current_page + page_window) %}
-
-                  {% set ns.ellipsis_printed = false %} {# Reset penanda elipsis #}
-                  {% if page_num == pagination.current_page %}
-                      <span class="active">{{ page_num }}</span>
-                  {% else %}
-                      <a href="{{ url_for('tabel', kelas=kelas, p=page_num) }}">{{ page_num }}</a>
-                  {% endif %}
-              {% else %}
-                  {# Tampilkan elipsis hanya sekali per jeda #}
-                  {% if not ns.ellipsis_printed %}
-                      <span class="ellipsis">...</span>
-                      {% set ns.ellipsis_printed = true %}
-                  {% endif %}
-              {% endif %}
-          {% endfor %}
-          {% if pagination.current_page < pagination.total_pages %}
-              <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page + 1) }}">Next</a>
-          {% else %}
-              <span class="disabled">Next</span>
-          {% endif %}
-
-          <div style="display: inline-flex; align-items: center; gap: 5px; margin-left: 15px; border-left: 1px solid #ccc; padding-left: 15px;">
-              <span style="font-size: 13px; color: #555;">Ke Hal:</span>
-              <input type="number" id="jumpPageInput" min="1" max="{{ pagination.total_pages }}" 
-                     style="width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; text-align: center;"
-                     onkeypress="if(event.key === 'Enter') jumpToPage()">
-              <button onclick="jumpToPage()" style="padding: 4px 10px; background: #2c3e50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Go</button>
-          </div>
-          
-          <script>
-              function jumpToPage() {
-                  var page = document.getElementById('jumpPageInput').value;
-                  if (page) {
-                      var url = new URL(window.location.href);
-                      url.searchParams.set('p', page);
-                      window.location.href = url.toString();
-                  }
-              }
-          </script>
-          </div>
-  </div>
-  {% endif %}
-  </div>
+<script>
+function jumpToPage() {
+    var p = document.getElementById('jumpPageInput').value;
+    if (p) {
+        var url = new URL(window.location.href);
+        url.searchParams.set('p', p);
+        window.location.href = url.toString();
+    }
+}
+</script>
 {% endblock %}

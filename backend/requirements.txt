@@ -21,7 +21,7 @@ distro==1.9.0
 dnspython==2.8.0
 ecdsa==0.19.2
 email-validator==2.3.0
-emergentintegrations==0.1.0
+#emergentintegrations==0.1.0
 et_xmlfile==2.0.0
 fastapi==0.110.1
 fastuuid==0.14.0
@@ -33,7 +33,7 @@ Flask-WTF==1.2.2
 frozenlist==1.8.0
 fsspec==2026.3.0
 google-ai-generativelanguage==0.6.15
-google-api-core==2.30.2
+google-api-core
 google-api-python-client==2.194.0
 google-auth==2.49.1
 google-auth-httplib2==0.3.1
@@ -42,7 +42,7 @@ google-genai==1.71.0
 google-generativeai==0.8.6
 googleapis-common-protos==1.74.0
 grpcio==1.80.0
-grpcio-status==1.71.2
+grpcio-status
 gspread==6.2.1
 h11==0.16.0
 hf-xet==1.4.3

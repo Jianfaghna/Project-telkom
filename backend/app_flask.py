@@ -1211,6 +1211,77 @@ def unsc():
         error=error,
     )
 
+# =====================================================================
+# ROUTE: /unsc_data  (real-time polling untuk halaman UNSC)
+# =====================================================================
+@flask_app.route('/unsc_data')
+@api_login_required
+def api_unsc_data():
+    filter_sto      = request.args.get('sto', '')
+    filter_status   = request.args.get('status', '')
+    filter_validasi = request.args.get('validasi', '')
+    search_query    = request.args.get('search', '').strip().lower()
+    current_page    = request.args.get('p', 1, type=int)
+    per_page        = 100
+
+    try:
+        all_data = get_sheet_values(
+            SPREADSHEET_IDS['kendala'],
+            SHEET_NAMES['kendala']['unsc']
+        )
+        if not all_data or len(all_data) < 2:
+            return jsonify({'data': []})
+
+        header   = [str(h).strip() for h in all_data[1]]
+        raw_rows = all_data[2:]
+
+        df = pd.DataFrame(raw_rows, columns=header)
+        df.columns = df.columns.str.strip()
+
+        if filter_sto and 'STO' in df.columns:
+            df = df[df['STO'] == filter_sto]
+
+        col_status = next((c for c in df.columns if 'STATUS' in c), None)
+        if filter_status and col_status:
+            df = df[df[col_status] == filter_status]
+
+        col_validasi = next((c for c in df.columns if 'VALIDASI' in c), None)
+        if filter_validasi and col_validasi:
+            df = df[df[col_validasi] == filter_validasi]
+
+        if search_query:
+            mask = pd.Series(False, index=df.index)
+            for col in ['ORDER_ID', 'DEVICE_ID', 'NAMA SALESFORCE', 'STO']:
+                if col in df.columns:
+                    mask |= df[col].astype(str).str.lower().str.contains(
+                        search_query, na=False
+                    )
+            df = df[mask]
+
+        start_index = (current_page - 1) * per_page
+        df_page     = df.iloc[start_index:start_index + per_page].fillna('')
+
+        return jsonify({
+            'data':        df_page.values.tolist(),
+            'start_index': start_index,
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+"""
+=============================================================
+JUGA: Di dashboard.html (bawaan GitHub), fetch ke /api/dashboard_stats
+Ganti dengan /dashboard_stats (tanpa /api/).
+
+Buka templates/dashboard.html, cari:
+    fetch('/api/dashboard_stats')
+Ganti dengan:
+    fetch('/dashboard_stats')
+=============================================================
+"""
+
 @flask_app.route('/update_unsc', methods=['POST'])
 @login_required
 def update_unsc():

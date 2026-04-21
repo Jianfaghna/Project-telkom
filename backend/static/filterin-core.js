@@ -247,7 +247,7 @@
 
     try {
       // Acquire lock
-      const lockRes = await (await fetch('/api/lock', {
+      const lockRes = await (await fetch('/lock', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sheet_name: SHEET_NAME, row_key: rowKey })
       })).json();
@@ -259,7 +259,7 @@
         document.getElementById('qe-btn-save').disabled = true;
       }
       // Fetch row data
-      const res = await (await fetch(`/api/kendala_row/${rowNum}`)).json();
+      const res = await (await fetch(`/kendala_row/${rowNum}`)).json();
       if (res.error) {
         window.toast('Gagal ambil data: ' + res.error, 'error');
         return;
@@ -295,7 +295,7 @@
     modalEl.classList.remove('show');
     if (currentRowKey) {
       try {
-        await fetch('/api/unlock', {
+        await fetch('/unlock', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sheet_name: SHEET_NAME, row_key: currentRowKey })
         });
@@ -320,7 +320,7 @@
 
     window.showLoading('Menyimpan ke Google Sheets…');
     try {
-      const res = await (await fetch('/api/update_kendala_row', {
+      const res = await (await fetch('/update_kendala_row', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           row_num: currentRowNum,

@@ -121,7 +121,7 @@
 
     async function updateStats() {
         try {
-            const r = await (await fetch('/api/dashboard_stats')).json();
+            const r = await (await fetch('/dashboard_stats')).json();
             if (r.error) return;
             ['total','done','pending','unsc'].forEach(k => {
                 const el = document.getElementById('live-'+k);
