@@ -277,8 +277,10 @@
     document.getElementById('qe-ctx-device-id').textContent = g('DEVICE_ID') || '—';
     const sto = g('STO'); const datel = g('DATEL');
     document.getElementById('qe-ctx-sto').textContent = (sto ? sto : '—') + (datel ? ` / ${datel}` : '');
-    document.getElementById('qe-ctx-suberror').textContent = g('SUBERRORCODE') || '—';
-    document.getElementById('qe-ctx-memo').textContent = g('ENGINEERMEMO') || '—';
+    document.getElementById('qe-ctx-suberror').textContent = 
+        g('SUB ERROR CODE') || g('SUBERRORCODE') || g('SUB_ERROR_CODE') || '—';
+    document.getElementById('qe-ctx-memo').textContent = 
+        g('ENGINEER MEMO') || g('ENGINEERMEMO') || g('ENGINEER_MEMO') || '—';
     document.getElementById('qe-ctx-status').textContent = g('STATUS_RESUME') || g('STATUS') || '—';
     document.getElementById('qe-ctx-odate').textContent = g('ORDER_DATE') || '—';
 

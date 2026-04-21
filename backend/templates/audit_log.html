@@ -1,37 +1,155 @@
 {% extends 'base.html' %}
 {% block title %}Audit Log - FilterIN{% endblock %}
 
+{% block head_extra %}
+<style>
+/* =====================================================
+   AUDIT LOG — Dark Mode Patches
+   ===================================================== */
+
+/* Filter card select */
+[data-theme="dark"] .filter-card select {
+    background: var(--surface-2, #111827) !important;
+    border-color: var(--border-strong, #475569) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .filter-card select option {
+    background: #1a2332;
+    color: #e2e8f0;
+}
+[data-theme="dark"] .filter-card label {
+    color: var(--text-muted, #94a3b8) !important;
+}
+
+/* Tabel */
+[data-theme="dark"] .audit-table {
+    background: var(--surface, #1a2332) !important;
+}
+[data-theme="dark"] .audit-table th {
+    background: var(--surface-2, #111827) !important;
+    color: var(--text-muted, #94a3b8) !important;
+    border-bottom-color: var(--border, #2d3748) !important;
+}
+[data-theme="dark"] .audit-table td {
+    color: var(--text, #e2e8f0) !important;
+    border-bottom-color: var(--border, #2d3748) !important;
+    background: var(--surface, #1a2332) !important;
+}
+[data-theme="dark"] .audit-table tbody tr:hover td {
+    background: #22304a !important;
+}
+[data-theme="dark"] .audit-table strong {
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .audit-table td[style*="monospace"] {
+    color: var(--text-muted, #94a3b8) !important;
+}
+
+/* Badge action — dark mode variants */
+[data-theme="dark"] .audit-action {
+    background: #1e3a5f !important;
+    color: #93c5fd !important;
+}
+[data-theme="dark"] .audit-action.update_row,
+[data-theme="dark"] .audit-action.update_bulk {
+    background: #14532d !important;
+    color: #86efac !important;
+}
+[data-theme="dark"] .audit-action.sync_bima {
+    background: #500724 !important;
+    color: #fbcfe8 !important;
+}
+[data-theme="dark"] .audit-action.move_to_unsc {
+    background: #3b0764 !important;
+    color: #d8b4fe !important;
+}
+[data-theme="dark"] .audit-action.change_password {
+    background: #713f12 !important;
+    color: #fde68a !important;
+}
+[data-theme="dark"] .audit-action.upload_filter_bima,
+[data-theme="dark"] .audit-action.upload_hapus_kolom {
+    background: #134e4a !important;
+    color: #5eead4 !important;
+}
+
+/* Kolom Old → New */
+[data-theme="dark"] .old-value {
+    color: var(--text-muted, #94a3b8) !important;
+}
+[data-theme="dark"] .new-value {
+    color: var(--text, #e2e8f0) !important;
+}
+
+/* Chip count */
+[data-theme="dark"] .chip-count {
+    background: #0c4a6e !important;
+    color: #bae6fd !important;
+}
+
+/* Pagination */
+[data-theme="dark"] .pagination-info { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .pagination-controls a { color: var(--text, #e2e8f0); }
+
+/* Grouping baris satu aksi — garis kiri tipis */
+.audit-table tbody tr.same-group td:first-child {
+    border-left: 3px solid transparent;
+}
+.audit-table tbody tr.group-start td {
+    border-top: 2px solid var(--border, #e2e8f0) !important;
+}
+[data-theme="dark"] .audit-table tbody tr.group-start td {
+    border-top-color: var(--border-strong, #475569) !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="main-content" data-testid="audit-log-page">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
-        <h1 style="margin:0; font-size: 22px; color: var(--text);">
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h1 style="margin:0; font-size:22px; color:var(--text);">
             <i class="fa-solid fa-clipboard-list"></i> Audit Log
         </h1>
         <span class="chip-count">{{ total }} entries</span>
     </div>
 
-    <div class="filter-card" style="background: var(--surface); padding: 14px 18px; margin-bottom: 14px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--border);">
-        <form method="GET" action="{{ url_for('audit_log_view') }}" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;" data-testid="filter-form">
+    <!-- FILTER -->
+    <div class="filter-card" style="background:var(--surface); padding:14px 18px; margin-bottom:14px; border-radius:var(--radius-md,8px); box-shadow:var(--shadow-sm); border:1px solid var(--border);">
+        <form method="GET" action="{{ url_for('audit_log_view') }}"
+              style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
             <div style="flex:1; min-width:180px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted);">User</label>
-                <select name="user" data-testid="filter-user">
+                <label style="font-weight:600; font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">User</label>
+                <select name="user" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface,#fff); color:var(--text,#333); font-size:13px;">
                     <option value="">-- Semua --</option>
-                    {% for u in usernames %}<option value="{{ u }}" {% if user_filter == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+                    {% for u in usernames %}
+                        <option value="{{ u }}" {% if user_filter == u %}selected{% endif %}>{{ u }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div style="flex:1; min-width:180px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted);">Action</label>
-                <select name="action" data-testid="filter-action">
+                <label style="font-weight:600; font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Action</label>
+                <select name="action" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface,#fff); color:var(--text,#333); font-size:13px;">
                     <option value="">-- Semua --</option>
-                    {% for a in actions %}<option value="{{ a }}" {% if action_filter == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+                    {% for a in actions %}
+                        <option value="{{ a }}" {% if action_filter == a %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
                 </select>
             </div>
-            <button type="submit" class="toolbar-btn active"><i class="fa-solid fa-filter"></i> Apply</button>
-            <a href="{{ url_for('audit_log_view') }}" class="toolbar-btn">Reset</a>
+            <div style="display:flex; gap:8px; align-items:flex-end;">
+                <button type="submit" class="toolbar-btn active">
+                    <i class="fa-solid fa-filter"></i> Apply
+                </button>
+                <a href="{{ url_for('audit_log_view') }}" class="toolbar-btn"
+                   style="text-decoration:none; display:inline-flex; align-items:center;">
+                    Reset
+                </a>
+            </div>
         </form>
     </div>
 
-    <div style="overflow-x:auto;">
+    <!-- TABEL -->
+    <div style="overflow-x:auto; border-radius:var(--radius-md,8px); box-shadow:var(--shadow-sm);">
         <table class="audit-table" data-testid="audit-table">
             <thead>
                 <tr>
@@ -41,46 +159,86 @@
                     <th>Sheet</th>
                     <th>Row / Order ID</th>
                     <th>Column</th>
-                    <th>Old → New</th>
+                    <th style="min-width:200px;">Old → New</th>
                     <th>IP</th>
                 </tr>
             </thead>
             <tbody>
+                {% set prev_ts = namespace(val='', prev_user='') %}
                 {% for r in rows %}
-                <tr>
-                    <td style="font-family:monospace; font-size:12px;">{{ r.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</td>
-                    <td><strong>{{ r.nama or r.username }}</strong><br><small style="color:var(--text-muted);">{{ r.username }}</small></td>
-                    <td><span class="audit-action {{ r.action }}">{{ r.action }}</span></td>
-                    <td>{{ r.sheet_name or '-' }}</td>
-                    <td>{{ r.row_key or '-' }}</td>
-                    <td>{{ r.column_name or '-' }}</td>
-                    <td style="max-width:300px;">
-                        {% if r.old_value or r.new_value %}
-                            <div style="font-size:11px; color:var(--text-muted);">{{ r.old_value or '(kosong)' }}</div>
-                            <div style="font-weight:600;">→ {{ r.new_value or '(kosong)' }}</div>
-                        {% else %}-{% endif %}
+                {% set ts_str = r.timestamp.strftime('%d/%m/%Y %H:%M:%S') %}
+                {% set is_new_group = (ts_str != prev_ts.val or r.username != prev_ts.prev_user) %}
+                <tr {% if is_new_group and not loop.first %}class="group-start"{% endif %}>
+                    <td style="font-family:monospace; font-size:12px; color:var(--text-muted);">
+                        {{ ts_str }}
                     </td>
-                    <td style="font-family:monospace; font-size:11px; color:var(--text-muted);">{{ r.ip_address or '-' }}</td>
+                    <td>
+                        <strong style="color:var(--text);">{{ r.nama or r.username }}</strong>
+                        <br>
+                        <small style="color:var(--text-muted); font-size:11px;">{{ r.username }}</small>
+                    </td>
+                    <td>
+                        <span class="audit-action {{ r.action }}">{{ r.action }}</span>
+                    </td>
+                    <td style="color:var(--text); font-size:12px;">{{ r.sheet_name or '—' }}</td>
+                    <td style="font-family:monospace; font-size:12px; color:var(--text); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                        title="{{ r.row_key or '' }}">
+                        {{ r.row_key or '—' }}
+                    </td>
+                    <td style="color:var(--text); font-size:12px; font-weight:600;">
+                        {{ r.column_name or '—' }}
+                    </td>
+                    <td style="max-width:280px;">
+                        {% if r.old_value or r.new_value %}
+                            <div class="old-value" style="font-size:11px; color:var(--text-muted); margin-bottom:3px; text-decoration:line-through; opacity:0.8;">
+                                {{ r.old_value or '(kosong)' }}
+                            </div>
+                            <div class="new-value" style="font-weight:600; color:var(--text); font-size:12px;">
+                                → {{ r.new_value or '(kosong)' }}
+                            </div>
+                        {% else %}
+                            <span style="color:var(--text-muted);">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-family:monospace; font-size:11px; color:var(--text-muted);">
+                        {{ r.ip_address or '—' }}
+                    </td>
                 </tr>
+                {% set prev_ts.val = ts_str %}
+                {% set prev_ts.prev_user = r.username %}
                 {% else %}
-                <tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">
-                    <i class="fa-solid fa-inbox" style="font-size:32px; opacity:0.4;"></i><br>
-                    Belum ada audit log.
-                </td></tr>
+                <tr>
+                    <td colspan="8" style="text-align:center; padding:40px; color:var(--text-muted);">
+                        <i class="fa-solid fa-inbox" style="font-size:32px; opacity:0.4; display:block; margin-bottom:10px;"></i>
+                        Belum ada audit log.
+                    </td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
+    <!-- PAGINATION -->
     {% if total_pages > 1 %}
     <div class="pagination-container" style="margin-top:16px;">
-        <div class="pagination-info" style="color:var(--text-muted);">Page {{ page }} of {{ total_pages }}</div>
+        <div class="pagination-info" style="color:var(--text-muted);">
+            Page {{ page }} of {{ total_pages }}
+        </div>
         <div class="pagination-controls">
-            {% if page > 1 %}<a href="?p={{ page-1 }}&user={{ user_filter }}&action={{ action_filter }}">« Prev</a>{% endif %}
+            {% if page > 1 %}
+                <a href="?p={{ page-1 }}&user={{ user_filter }}&action={{ action_filter }}">« Prev</a>
+            {% else %}
+                <span class="disabled">« Prev</span>
+            {% endif %}
             <span class="active">{{ page }}</span>
-            {% if page < total_pages %}<a href="?p={{ page+1 }}&user={{ user_filter }}&action={{ action_filter }}">Next »</a>{% endif %}
+            {% if page < total_pages %}
+                <a href="?p={{ page+1 }}&user={{ user_filter }}&action={{ action_filter }}">Next »</a>
+            {% else %}
+                <span class="disabled">Next »</span>
+            {% endif %}
         </div>
     </div>
     {% endif %}
+
 </div>
 {% endblock %}
