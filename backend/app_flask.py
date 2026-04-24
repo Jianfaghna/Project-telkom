@@ -62,6 +62,8 @@ SHEET_NAMES = {
         'unsc':          'DB UNSC (END STATE)',
         'laporan':       'NEW SUMMARY',
         'tabsum':        'RECAP REPORT',
+        'tati':          'TATI',
+        'lapodp':        'LAP VALIDASI ODP', 
     },
     'ODP': {'validasi': 'MONITORING EXPAND 1:2'},
 }
@@ -1545,6 +1547,260 @@ def audit_log_view():
         usernames=usernames, actions=actions,
         user_filter=user_filter, action_filter=action_filter,
     )
+
+# =====================================================================
+# HELPER PIVOT — hitung cross-tab dari DataFrame
+# =====================================================================
+def _pivot_2d(df, row_col, col_col):
+    """
+    Buat pivot sederhana: {row_val: {col_val: count, '_total': n}}
+    dan dict total per kolom.
+    """
+    result   = {}
+    col_totals = {}
+ 
+    for _, r in df.iterrows():
+        rv = str(r.get(row_col, '') or '').strip() or '(kosong)'
+        cv = str(r.get(col_col, '') or '').strip() or '(kosong)'
+        result.setdefault(rv, {})
+        result[rv][cv]        = result[rv].get(cv, 0) + 1
+        result[rv]['_total']  = result[rv].get('_total', 0) + 1
+        col_totals[cv]        = col_totals.get(cv, 0) + 1
+ 
+    # Sort descending by total
+    result = dict(sorted(result.items(), key=lambda x: x[1].get('_total', 0), reverse=True))
+    return result, col_totals
+ 
+ 
+# =====================================================================
+# ROUTE /recap — Recap Report lengkap
+# =====================================================================
+@flask_app.route('/recap')
+@login_required
+def recap():
+    from datetime import datetime
+    import calendar
+ 
+    now = datetime.now()
+    now_str = now.strftime('%d/%m/%Y %H:%M')
+ 
+    # ------------------------------------------------------------------
+    # 1. Ambil data DB Kendala Master
+    # ------------------------------------------------------------------
+    try:
+        all_data = get_sheet_values(SPREADSHEET_IDS['kendala'],
+                                    SHEET_NAMES['kendala']['kendalamaster'])
+        header   = [str(h).strip() for h in all_data[1]]
+        df_raw   = pd.DataFrame(all_data[2:], columns=header)
+        df_raw.columns = df_raw.columns.str.strip()
+        df       = hitung_rumus_otomatis(df_raw.copy())
+    except Exception as e:
+        flash(f'Gagal ambil data Kendala Master: {e}', 'error')
+        df = pd.DataFrame()
+ 
+    # ------------------------------------------------------------------
+    # 2. Hitung statistik summary
+    # ------------------------------------------------------------------
+    stats = dict(total=0, current_active=0, wo_active_ao=0,
+                 wo_active_pda=0, wo_inactive_ao=0, wo_inactive_pda=0, new_wo=0)
+    feedback_datel      = {}
+    feedback_datel_total = {}
+    actual_datel        = {}
+    actual_datel_total  = {}
+    datels              = []
+    wilayah_report      = {}
+ 
+    if not df.empty:
+        stats['total'] = len(df)
+ 
+        # Kolom helper
+        fb_col  = 'FEEDBACK ASO'
+        ak_col  = 'ACTUAL KENDALA'
+        dt_col  = 'DATEL'
+        ia_col  = 'IS_ACTIVE_KENDALA'
+        uic_col = 'CURRENT_UIC'
+        oid_col = 'ORDER_ID'
+        sto_col = 'STO'
+ 
+        # WO Active/Inactive
+        df_active   = df[df[ia_col] == 'ACTIVE']  if ia_col in df.columns else df
+        df_inactive = df[df[ia_col] == 'INACTIVE'] if ia_col in df.columns else pd.DataFrame()
+ 
+        stats['current_active'] = len(df_active)
+ 
+        # Pisah AO vs PDA berdasar CURRENT_UIC atau fallback ke semua
+        if uic_col in df.columns:
+            stats['wo_active_ao']   = int((df_active[uic_col].str.strip().str.upper()   == 'TA').sum())
+            stats['wo_active_pda']  = int((df_active[uic_col].str.strip().str.upper()   == 'TIF').sum())
+            stats['wo_inactive_ao'] = int((df_inactive[uic_col].str.strip().str.upper() == 'TA').sum()) if not df_inactive.empty else 0
+            stats['wo_inactive_pda']= int((df_inactive[uic_col].str.strip().str.upper() == 'TIF').sum()) if not df_inactive.empty else 0
+        else:
+            stats['wo_active_ao']    = len(df_active)
+            stats['wo_inactive_ao']  = len(df_inactive) if not df_inactive.empty else 0
+ 
+        # New WO (hari ini)
+        if 'ORDER_DATE_DT' in df.columns:
+            today = pd.Timestamp(now.date())
+            stats['new_wo'] = int((df['ORDER_DATE_DT'].dt.normalize() == today).sum())
+ 
+        # Daftar datel unik (urut)
+        DATEL_ORDER = ['MAGELANG', 'KEBUMEN', 'PWREJO', 'MUNTILAN', 'TMNGGUNG', 'WONOSOBO']
+        if dt_col in df_active.columns:
+            raw_datels = df_active[dt_col].str.strip().str.upper().unique().tolist()
+            datels = [d for d in DATEL_ORDER if d in raw_datels]
+            datels += [d for d in raw_datels if d not in DATEL_ORDER and d]
+        else:
+            datels = []
+ 
+        # Pivot Feedback ASO x Datel (hanya active)
+        if fb_col in df_active.columns and dt_col in df_active.columns:
+            feedback_datel, feedback_datel_total = _pivot_2d(df_active, fb_col, dt_col)
+ 
+        # Pivot Actual Kendala x Datel (hanya active)
+        if ak_col in df_active.columns and dt_col in df_active.columns:
+            actual_datel, actual_datel_total = _pivot_2d(df_active, ak_col, dt_col)
+ 
+        # Report per wilayah
+        WILAYAH_MAP = {
+            'MGL': ['MAGELANG'],
+            'KBM': ['KEBUMEN'],
+            'MUN': ['MUNTILAN'],
+            'PWJ': ['PWREJO'],
+            'TMG': ['TMNGGUNG'],
+            'WOS': ['WONOSOBO'],
+        }
+ 
+        for wil, datel_list in WILAYAH_MAP.items():
+            if dt_col not in df_active.columns:
+                break
+            mask  = df_active[dt_col].str.strip().str.upper().isin(datel_list)
+            df_wil = df_active[mask]
+            if df_wil.empty:
+                continue
+ 
+            def get_orders(df_sub, fb_vals):
+                if fb_col not in df_sub.columns:
+                    return []
+                m = df_sub[fb_col].str.strip().str.upper().isin([v.upper() for v in fb_vals])
+                rows = df_sub[m]
+                result = []
+                for _, r in rows.iterrows():
+                    oid  = str(r.get(oid_col, '') or '').strip()
+                    dt   = str(r.get(dt_col,  '') or '').strip()
+                    note = str(r.get('NOTES ASO', '') or '').strip()
+                    result.append(f"{dt} | {oid}" + (f" — {note[:60]}" if note else ''))
+                return result
+ 
+            wilayah_report[wil] = {
+                'req_remanja' : get_orders(df_wil, ['REQ REMANJA', 'FU CALANG', 'REQ IJIN TATI - TSEL', 'REQ IJIN TATI']),
+                'reorder'     : get_orders(df_wil, ['RE-ORDER', 'REORDER']),
+                'done_tati'   : get_orders(df_wil, ['DONE TATI']),
+                'ijin_tsel'   : get_orders(df_wil, ['IJIN TSEL', 'REQ IJIN TSEL']),
+                'validasi_tsel': get_orders(df_wil, ['VALIDASI ADMINISTRASI TSEL', 'VERIVIKASI UNSC']),
+            }
+ 
+    # ------------------------------------------------------------------
+    # 3. TATI — baca dari sheet TATI
+    # ------------------------------------------------------------------
+    MONTHS     = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des']
+    tati_year  = str(now.year)
+    tati_month_name = now.strftime('%B')
+    tati_days  = list(range(1, 32))
+    tati_bulanan       = {}
+    tati_bulanan_total = {}
+    tati_harian        = {}
+    tati_harian_total  = {}
+ 
+    try:
+        tati_data = get_sheet_values(SPREADSHEET_IDS['kendala'], 'TATI')
+ 
+        # Tabel bulanan: B2:O10 → baris 2..10 = index 1..9
+        if len(tati_data) >= 10:
+            # Baris header di index 2 (baris ke-3), data dari index 3
+            for row in tati_data[3:10]:
+                if not row or not row[1]: continue
+                datel = str(row[1]).strip().upper()
+                tati_bulanan[datel] = {}
+                total = 0
+                for i, m in enumerate(MONTHS):
+                    col_idx = i + 2  # B=1, data mulai C=2
+                    val = 0
+                    if col_idx < len(row):
+                        try: val = int(str(row[col_idx]).strip() or 0)
+                        except: val = 0
+                    tati_bulanan[datel][m] = val
+                    total += val
+                    tati_bulanan_total[m]    = tati_bulanan_total.get(m, 0) + val
+                tati_bulanan[datel]['_total'] = total
+                tati_bulanan_total['_total']  = tati_bulanan_total.get('_total', 0) + total
+ 
+        # Tabel harian: R2:AX10 → kolom R=17, data 31 hari
+        if len(tati_data) >= 10:
+            for row in tati_data[3:10]:
+                if not row: continue
+                # Kolom R = index 17 (0-based)
+                if len(row) <= 17: continue
+                datel = str(row[17]).strip().upper()
+                if not datel: continue
+                tati_harian[datel] = {}
+                total = 0
+                for day in range(1, 32):
+                    col_idx = 17 + day  # R=17, hari 1 = index 18
+                    val = 0
+                    if col_idx < len(row):
+                        try: val = int(str(row[col_idx]).strip() or 0)
+                        except: val = 0
+                    tati_harian[datel][day] = val
+                    total += val
+                    tati_harian_total[day]     = tati_harian_total.get(day, 0) + val
+                tati_harian[datel]['_total']  = total
+                tati_harian_total['_total']   = tati_harian_total.get('_total', 0) + total
+ 
+    except Exception as e:
+        print(f'[RECAP TATI ERROR] {e}')
+ 
+    # ------------------------------------------------------------------
+    # 4. Laporan Validasi ODP — baca dari LAP VALIDASI ODP
+    # ------------------------------------------------------------------
+    odp_header = []
+    odp_data   = []
+    try:
+        ws_odp    = get_worksheet(SPREADSHEET_IDS['kendala'], 'LAP VALIDASI ODP')
+        odp_range = ws_odp.get('O5:S20')
+        if odp_range and len(odp_range) >= 2:
+            odp_header = [str(h).strip() for h in odp_range[0]]
+            odp_data   = [
+                r + [''] * (len(odp_header) - len(r))
+                for r in odp_range[1:]
+                if any(str(c).strip() for c in r)
+            ]
+    except Exception as e:
+        print(f'[RECAP ODP ERROR] {e}')
+ 
+    # ------------------------------------------------------------------
+    # 5. Render
+    # ------------------------------------------------------------------
+    return render_template('recap.html',
+        now_str            = now_str,
+        stats              = stats,
+        datels             = datels,
+        feedback_datel     = feedback_datel,
+        feedback_datel_total = feedback_datel_total,
+        actual_datel       = actual_datel,
+        actual_datel_total = actual_datel_total,
+        wilayah_report     = wilayah_report,
+        tati_year          = tati_year,
+        tati_month_name    = tati_month_name,
+        months             = MONTHS,
+        tati_days          = tati_days,
+        tati_bulanan       = tati_bulanan,
+        tati_bulanan_total = tati_bulanan_total,
+        tati_harian        = tati_harian,
+        tati_harian_total  = tati_harian_total,
+        odp_header         = odp_header,
+        odp_data           = odp_data,
+    )
+
 
 # =====================================================================
 # ROUTES - PLACEHOLDERS

@@ -1,0 +1,670 @@
+{% extends 'base.html' %}
+{% block title %}Recap Report - FilterIN{% endblock %}
+
+{% block head_extra %}
+<style>
+/* =============================================
+   RECAP REPORT — Screen styles
+   ============================================= */
+.recap-page { max-width: 1200px; margin: 0 auto; }
+
+.recap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.recap-header h1 {
+    margin: 0;
+    font-size: 22px;
+    color: var(--text, #1e293b);
+}
+.recap-meta {
+    font-size: 13px;
+    color: var(--text-muted, #64748b);
+}
+
+/* Section */
+.recap-section {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.recap-section-title {
+    padding: 12px 18px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+/* Summary box warna-warni */
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0;
+}
+.summary-item {
+    padding: 16px 20px;
+    border-right: 1px solid var(--border, #e2e8f0);
+    border-bottom: 1px solid var(--border, #e2e8f0);
+}
+.summary-item:last-child { border-right: none; }
+.summary-item .s-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+}
+.summary-item .s-value {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+}
+.s-green  { color: #16a34a; }
+.s-red    { color: #dc2626; }
+.s-blue   { color: #2563eb; }
+.s-gray   { color: #64748b; }
+.s-orange { color: #ea580c; }
+
+/* Tabel recap */
+.recap-table-wrap { overflow-x: auto; }
+.recap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.recap-table th {
+    background: #0b3d91;
+    color: #fff;
+    padding: 10px 14px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+.recap-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border, #eee);
+    color: var(--text, #333);
+}
+.recap-table tbody tr:hover td { background: #f0f6ff; }
+.recap-table .td-label {
+    font-weight: 600;
+    color: var(--text, #1e293b);
+    background: var(--surface-2, #f8fafc);
+}
+.recap-table .td-total {
+    font-weight: 700;
+    background: #f0f9ff;
+    color: #0369a1;
+    text-align: center;
+}
+.recap-table .td-num { text-align: center; }
+.recap-table .td-grand {
+    font-weight: 700;
+    background: #1e3a5f;
+    color: #fff !important;
+    text-align: center;
+}
+/* Warna zebra */
+.recap-table tbody tr:nth-child(even) td:not(.td-total):not(.td-grand) {
+    background: var(--surface-2, #fafbfc);
+}
+
+/* TATI — header hijau */
+.tati-section .recap-section-title { background: #166534; color: #fff; }
+.tati-section .recap-table th { background: #15803d; }
+.tati-section .recap-table .td-total { background: #dcfce7; color: #166534; }
+.tati-section .recap-table .td-grand { background: #166534; }
+
+/* Laporan teks per wilayah */
+.wilayah-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 16px;
+}
+@media (max-width: 768px) { .wilayah-grid { grid-template-columns: 1fr; } }
+
+.wilayah-card {
+    background: var(--surface-2, #f8fafc);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.wilayah-card-header {
+    background: #0b3d91;
+    color: #fff;
+    padding: 10px 14px;
+    font-weight: 700;
+    font-size: 13px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+.wilayah-card-body { padding: 12px 14px; }
+.wilayah-item {
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border, #e2e8f0);
+    font-size: 13px;
+    color: var(--text, #333);
+}
+.wilayah-item:last-child { border-bottom: none; }
+.wilayah-item .wi-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted, #64748b);
+    text-transform: uppercase;
+    margin-bottom: 3px;
+}
+.wilayah-item .wi-count {
+    display: inline-block;
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    margin-left: 6px;
+}
+.wilayah-item .wi-count.zero { background: #f1f5f9; color: #94a3b8; }
+.wilayah-item .wi-orders { font-size: 11px; color: var(--text-muted, #64748b); margin-top: 4px; }
+
+/* ODP tabel */
+.odp-section .recap-section-title { background: #0e7490; color: #fff; }
+.odp-section .recap-table th { background: #0e7490; }
+
+/* Export button */
+.btn-export-pdf {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: #dc2626;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-export-pdf:hover { background: #b91c1c; }
+
+/* Dark mode */
+[data-theme="dark"] .recap-section { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .recap-table td { background: var(--surface); color: var(--text); border-color: var(--border); }
+[data-theme="dark"] .recap-table tbody tr:nth-child(even) td { background: var(--surface-2) !important; }
+[data-theme="dark"] .recap-table tbody tr:hover td { background: #22304a !important; }
+[data-theme="dark"] .recap-table .td-label { background: var(--surface-2); color: var(--text); }
+[data-theme="dark"] .summary-item { border-color: var(--border); }
+[data-theme="dark"] .wilayah-card { background: var(--surface-2); border-color: var(--border); }
+[data-theme="dark"] .wilayah-card-body { background: var(--surface-2); }
+[data-theme="dark"] .wilayah-item { border-color: var(--border); color: var(--text); }
+
+/* =============================================
+   PRINT / PDF styles
+   ============================================= */
+@media print {
+    /* ── Ukuran & orientasi kertas ── */
+    @page {
+        size: A4 landscape;
+        margin: 12mm 14mm;
+    }
+    @page :first { margin-top: 10mm; }
+
+    /* ── Sembunyikan elemen non-laporan ── */
+    .sidebar, .main-header, .btn-export-pdf,
+    .recap-header .btn-export-pdf,
+    .flash-messages, .controls-bar,
+    #sidebar-toggle { display: none !important; }
+
+    /* ── Reset layout container ── */
+    html, body {
+        width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+    }
+    .main-container {
+        margin-left: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .content-wrapper {
+        padding: 0 !important;
+        max-width: 100% !important;
+    }
+    .recap-page {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+    }
+
+    /* ── Paksa warna tetap muncul di print ── */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    /* ── Tabel tidak overflow — scale down jika terlalu lebar ── */
+    .recap-table-wrap {
+        overflow: visible !important;
+        width: 100% !important;
+    }
+    .recap-table {
+        width: 100% !important;
+        table-layout: auto !important;
+        font-size: 8px !important;
+        white-space: nowrap;
+    }
+    /* TATI harian — kolom sangat banyak, font lebih kecil */
+    .tati-section .recap-table {
+        font-size: 7px !important;
+        transform-origin: top left;
+    }
+    .recap-table th, .recap-table td {
+        padding: 4px 5px !important;
+    }
+    /* Tabel harian kolom tanggal — lebar minimal */
+    .tati-section .recap-table th:not(:first-child),
+    .tati-section .recap-table td:not(:first-child) {
+        min-width: 18px !important;
+        padding: 4px 2px !important;
+    }
+
+    /* ── Page break ── */
+    .recap-section {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 10px !important;
+        border-radius: 4px !important;
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+    }
+    /* TATI dan ODP mulai halaman baru */
+    .tati-section { page-break-before: always; break-before: page; }
+    .odp-section  { page-break-before: always; break-before: page; }
+
+    /* Wilayah grid — 3 kolom di landscape */
+    .wilayah-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 8px !important;
+        padding: 10px !important;
+    }
+    .wilayah-card-body { padding: 8px !important; }
+    .wilayah-item { font-size: 9px !important; padding: 4px 0 !important; }
+    .wi-label { font-size: 8px !important; }
+    .wi-orders { font-size: 8px !important; }
+
+    /* Summary grid — 3 kolom */
+    .summary-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+    .summary-item .s-value { font-size: 22px !important; }
+    .summary-item .s-label { font-size: 9px !important; }
+    .summary-item { padding: 10px 14px !important; }
+
+    /* Print header */
+    .print-header {
+        display: block !important;
+        text-align: center;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #0b3d91;
+    }
+    .print-header h2 { margin: 0; font-size: 14px; color: #0b3d91; }
+    .print-header p  { margin: 3px 0 0; font-size: 10px; color: #555; }
+
+    /* Recap header screen — sembunyikan di print */
+    .recap-header { display: none !important; }
+
+    /* Section title font */
+    .recap-section-title { font-size: 10px !important; padding: 8px 12px !important; }
+
+    body { font-size: 9px; }
+}
+
+/* Print header — hidden on screen */
+.print-header { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="recap-page">
+
+    <!-- Print header (hanya muncul saat print) -->
+    <div class="print-header">
+        <h2>RECAP REPORT — FILTERIN TELKOM MAGELANG</h2>
+        <p>Tanggal Cetak: {{ now_str }} &nbsp;|&nbsp; Total WO Aktif: {{ stats.wo_active_ao }}</p>
+    </div>
+
+    <!-- Page header -->
+    <div class="recap-header">
+        <div>
+            <h1><i class="fa-solid fa-chart-bar"></i> Recap Report</h1>
+            <div class="recap-meta">
+                <i class="fa-solid fa-clock"></i> Data diambil: {{ now_str }}
+                &nbsp;|&nbsp;
+                <i class="fa-solid fa-database"></i> Total order: <strong>{{ stats.total }}</strong>
+            </div>
+        </div>
+        <button class="btn-export-pdf" onclick="window.print()">
+            <i class="fa-solid fa-file-pdf"></i> Export PDF
+        </button>
+    </div>
+
+    <!-- ==========================================
+         SECTION 1: SUMMARY STATISTIK
+         ========================================== -->
+    <div class="recap-section">
+        <div class="recap-section-title" style="background:#0b3d91; color:#fff;">
+            <i class="fa-solid fa-chart-pie"></i> Summary Statistik Workfail
+        </div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="s-label">Current Workfail Active</div>
+                <div class="s-value s-blue">{{ stats.current_active }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="s-label">WO Active AO</div>
+                <div class="s-value s-green">{{ stats.wo_active_ao }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="s-label">WO Active PDA</div>
+                <div class="s-value s-green">{{ stats.wo_active_pda }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="s-label">WO Inactive AO</div>
+                <div class="s-value s-red">{{ stats.wo_inactive_ao }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="s-label">WO Inactive PDA</div>
+                <div class="s-value s-red">{{ stats.wo_inactive_pda }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="s-label">New WO Workfail Active</div>
+                <div class="s-value s-orange">{{ stats.new_wo }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECTION 2: BREAKDOWN FEEDBACK ASO x DATEL
+         ========================================== -->
+    <div class="recap-section">
+        <div class="recap-section-title" style="background:#1e40af; color:#fff;">
+            <i class="fa-solid fa-table"></i> Breakdown Feedback ASO per Datel (WO Active)
+        </div>
+        <div class="recap-table-wrap">
+            <table class="recap-table">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; min-width:180px;">Feedback ASO</th>
+                        {% for d in datels %}
+                            <th>{{ d }}</th>
+                        {% endfor %}
+                        <th class="td-grand">TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fb, row in feedback_datel.items() %}
+                    <tr>
+                        <td class="td-label">{{ fb or '(kosong)' }}</td>
+                        {% for d in datels %}
+                            <td class="td-num">{{ row.get(d, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-total">{{ row.get('_total', 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                    <!-- Grand Total row -->
+                    <tr>
+                        <td class="td-grand" style="text-align:left;">GRAND TOTAL</td>
+                        {% for d in datels %}
+                            <td class="td-grand">{{ feedback_datel_total.get(d, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-grand">{{ stats.current_active }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECTION 3: BREAKDOWN ACTUAL KENDALA x DATEL
+         ========================================== -->
+    <div class="recap-section">
+        <div class="recap-section-title" style="background:#1e40af; color:#fff;">
+            <i class="fa-solid fa-table"></i> Breakdown Actual Kendala per Datel (WO Active)
+        </div>
+        <div class="recap-table-wrap">
+            <table class="recap-table">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; min-width:180px;">Actual Kendala</th>
+                        {% for d in datels %}
+                            <th>{{ d }}</th>
+                        {% endfor %}
+                        <th class="td-grand">TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ak, row in actual_datel.items() %}
+                    <tr>
+                        <td class="td-label">{{ ak or '(kosong)' }}</td>
+                        {% for d in datels %}
+                            <td class="td-num">{{ row.get(d, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-total">{{ row.get('_total', 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                        <td class="td-grand" style="text-align:left;">GRAND TOTAL</td>
+                        {% for d in datels %}
+                            <td class="td-grand">{{ actual_datel_total.get(d, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-grand">{{ stats.current_active }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECTION 4: REPORT KENDALA PER WILAYAH
+         ========================================== -->
+    <div class="recap-section">
+        <div class="recap-section-title" style="background:#0f766e; color:#fff;">
+            <i class="fa-solid fa-map-marker-alt"></i> Report Kendala per Wilayah (WO Active)
+        </div>
+        <div class="wilayah-grid">
+            {% for wil, data in wilayah_report.items() %}
+            <div class="wilayah-card">
+                <div class="wilayah-card-header">REPORT KENDALA FMC {{ wil }}</div>
+                <div class="wilayah-card-body">
+
+                    <div class="wilayah-item">
+                        <div class="wi-label">KENDALA REQ REMANJA/FU CALANG
+                            <span class="wi-count {% if data.req_remanja|length == 0 %}zero{% endif %}">
+                                {{ data.req_remanja|length }}
+                            </span>
+                        </div>
+                        {% for o in data.req_remanja %}
+                            <div class="wi-orders">{{ o }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="wilayah-item">
+                        <div class="wi-label">KENDALA RE-ORDER PT1
+                            <span class="wi-count {% if data.reorder|length == 0 %}zero{% endif %}">
+                                {{ data.reorder|length }}
+                            </span>
+                        </div>
+                        {% for o in data.reorder %}
+                            <div class="wi-orders">{{ o }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="wilayah-item">
+                        <div class="wi-label">KENDALA DONE TATI
+                            <span class="wi-count {% if data.done_tati|length == 0 %}zero{% endif %}">
+                                {{ data.done_tati|length }}
+                            </span>
+                        </div>
+                        {% for o in data.done_tati %}
+                            <div class="wi-orders">{{ o }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="wilayah-item">
+                        <div class="wi-label">KENDALA IJIN TSEL
+                            <span class="wi-count {% if data.ijin_tsel|length == 0 %}zero{% endif %}">
+                                {{ data.ijin_tsel|length }}
+                            </span>
+                        </div>
+                        {% for o in data.ijin_tsel %}
+                            <div class="wi-orders">{{ o }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="wilayah-item">
+                        <div class="wi-label">VALIDASI ADMINISTRASI TSEL
+                            <span class="wi-count {% if data.validasi_tsel|length == 0 %}zero{% endif %}">
+                                {{ data.validasi_tsel|length }}
+                            </span>
+                        </div>
+                        {% for o in data.validasi_tsel %}
+                            <div class="wi-orders">{{ o }}</div>
+                        {% endfor %}
+                    </div>
+
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECTION 5: TATI — BULANAN IZIN NOK
+         ========================================== -->
+    <div class="recap-section tati-section">
+        <div class="recap-section-title">
+            <i class="fa-solid fa-calendar-days"></i> TATI — Bulanan IZIN NOK ({{ tati_year }})
+        </div>
+        <div class="recap-table-wrap">
+            <table class="recap-table">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;">Datel</th>
+                        {% for m in months %}
+                            <th>{{ m }}</th>
+                        {% endfor %}
+                        <th class="td-grand">TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for datel, row in tati_bulanan.items() %}
+                    <tr>
+                        <td class="td-label">{{ datel }}</td>
+                        {% for m in months %}
+                            <td class="td-num">{{ row.get(m, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-total">{{ row.get('_total', 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                        <td class="td-grand" style="text-align:left;">JUMLAH</td>
+                        {% for m in months %}
+                            <td class="td-grand">{{ tati_bulanan_total.get(m, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-grand">{{ tati_bulanan_total.get('_total', 0) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECTION 6: TATI — HARIAN IZIN NOK
+         ========================================== -->
+    <div class="recap-section tati-section">
+        <div class="recap-section-title">
+            <i class="fa-solid fa-calendar-day"></i> TATI — Harian IZIN NOK ({{ tati_month_name }})
+        </div>
+        <div class="recap-table-wrap">
+            <table class="recap-table">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;">Datel</th>
+                        {% for day in tati_days %}
+                            <th style="min-width:28px; padding:8px 4px;">{{ day }}</th>
+                        {% endfor %}
+                        <th class="td-grand">TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for datel, row in tati_harian.items() %}
+                    <tr>
+                        <td class="td-label">{{ datel }}</td>
+                        {% for day in tati_days %}
+                            <td class="td-num" style="padding:8px 4px;">{{ row.get(day, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-total">{{ row.get('_total', 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                        <td class="td-grand" style="text-align:left;">JUMLAH</td>
+                        {% for day in tati_days %}
+                            <td class="td-grand" style="padding:8px 4px;">{{ tati_harian_total.get(day, 0) or '' }}</td>
+                        {% endfor %}
+                        <td class="td-grand">{{ tati_harian_total.get('_total', 0) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         SECTION 7: LAPORAN VALIDASI ODP
+         ========================================== -->
+    {% if odp_data %}
+    <div class="recap-section odp-section">
+        <div class="recap-section-title">
+            <i class="fa-solid fa-tower-cell"></i> Report Validasi ODP MGL
+        </div>
+        <div class="recap-table-wrap">
+            <table class="recap-table">
+                <thead>
+                    <tr>
+                        {% for h in odp_header %}
+                            <th style="text-align:left;">{{ h }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in odp_data %}
+                    <tr>
+                        {% for c in row %}
+                            <td>{{ c }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
