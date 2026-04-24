@@ -716,32 +716,119 @@ def ganti_password():
 # ROUTES - DASHBOARD
 # =====================================================================
 def _compute_dashboard_stats():
+    """Hitung semua statistik untuk dashboard termasuk data chart."""
+    from datetime import datetime, timedelta
+    import collections
+ 
+    empty = dict(
+        total=0, done=0, unsc=0, pending=0, active=0, inactive=0,
+        chart_sto      = {'labels': [], 'values': []},
+        chart_feedback = {'labels': [], 'values': []},
+        chart_umur     = {'labels': [], 'values': []},
+        chart_trend    = {'labels': [], 'values': []},
+        top_suberror   = [],
+    )
     try:
-        values = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        values = get_sheet_values(
+            SPREADSHEET_IDS['kendala'],
+            SHEET_NAMES['kendala']['kendalamaster']
+        )
         if len(values) < 3:
-            return dict(total=0, done=0, unsc=0, pending=0, active=0, inactive=0)
+            return empty
+ 
         header = [str(h).strip() for h in values[1]]
         df = pd.DataFrame(values[2:], columns=header)
         df.columns = df.columns.str.strip()
         df = hitung_rumus_otomatis(df)
+ 
         total = len(df)
-        fb = df.get('FEEDBACK ASO', pd.Series([''] * len(df))).astype(str).str.strip().str.upper()
-        done = int((fb == 'DONE TATI').sum())
-        unsc = int((fb == 'UNSC').sum())
+        fb    = df.get('FEEDBACK ASO', pd.Series([''] * total)).astype(str).str.strip().str.upper()
+        done  = int((fb == 'DONE TATI').sum())
+        unsc  = int(fb.isin(['UNSC','VERIFIKASI UNSC']).sum())
         pending = total - done - unsc
-        active = int((df['IS_ACTIVE_KENDALA'] == 'ACTIVE').sum()) if 'IS_ACTIVE_KENDALA' in df.columns else 0
-        inactive = total - active
-        return dict(total=total, done=done, unsc=unsc, pending=pending, active=active, inactive=inactive)
+        active  = int((df.get('IS_ACTIVE_KENDALA', pd.Series()) == 'ACTIVE').sum())
+ 
+        # ── Filter hanya ACTIVE untuk chart ──
+        df_active = df[df.get('IS_ACTIVE_KENDALA', pd.Series([''] * total)) == 'ACTIVE'] \
+                    if 'IS_ACTIVE_KENDALA' in df.columns else df
+ 
+        # ── Chart 1: Kendala per STO ──
+        if 'STO' in df_active.columns:
+            sto_counts = df_active['STO'].str.strip().str.upper().value_counts()
+            chart_sto = {
+                'labels': sto_counts.index.tolist(),
+                'values': sto_counts.values.tolist(),
+            }
+        else:
+            chart_sto = {'labels': [], 'values': []}
+ 
+        # ── Chart 2: Feedback ASO distribution ──
+        if 'FEEDBACK ASO' in df_active.columns:
+            fb_counts = df_active['FEEDBACK ASO'].str.strip() \
+                            .replace('', '(kosong)').fillna('(kosong)') \
+                            .value_counts().head(8)
+            chart_feedback = {
+                'labels': fb_counts.index.tolist(),
+                'values': fb_counts.values.tolist(),
+            }
+        else:
+            chart_feedback = {'labels': [], 'values': []}
+ 
+        # ── Chart 3: Umur Kendala bins ──
+        UMUR_ORDER = ['A. <1 HARI','B. 1-3 HARI','C. 4-7 HARI',
+                      'D. 1-2 MINGGU','E. 2-3 MINGGU','F. >3 MINGGU','G. >1 BULAN']
+        if 'UMUR KENDALA' in df_active.columns:
+            umur_counts = df_active['UMUR KENDALA'].str.strip().str.upper().value_counts()
+            # urutkan sesuai UMUR_ORDER
+            labels = [u for u in UMUR_ORDER if u in umur_counts.index]
+            values = [int(umur_counts.get(u, 0)) for u in labels]
+            chart_umur = {'labels': labels, 'values': values}
+        else:
+            chart_umur = {'labels': [], 'values': []}
+ 
+        # ── Chart 4: Trend order masuk 14 hari ──
+        chart_trend = {'labels': [], 'values': []}
+        if 'ORDER_DATE_DT' in df.columns:
+            today = pd.Timestamp(datetime.now().date())
+            dates = [today - timedelta(days=i) for i in range(13, -1, -1)]
+            df_dt = df.dropna(subset=['ORDER_DATE_DT'])
+            counts = df_dt['ORDER_DATE_DT'].dt.normalize().value_counts()
+            chart_trend = {
+                'labels': [d.strftime('%d/%m') for d in dates],
+                'values': [int(counts.get(d, 0)) for d in dates],
+            }
+ 
+        # ── Top 5 Sub Error Code ──
+        top_suberror = []
+        sec_col = next((c for c in df.columns if 'SUB ERROR' in c.upper() or 'SUBERROR' in c.upper()), None)
+        if sec_col:
+            sec_counts = df_active[sec_col].str.strip() \
+                             .replace('', None).dropna() \
+                             .value_counts().head(5)
+            max_count = sec_counts.max() if len(sec_counts) else 1
+            top_suberror = [
+                {'code': code, 'count': int(cnt), 'pct': round(cnt / max_count * 100)}
+                for code, cnt in sec_counts.items()
+            ]
+ 
+        return dict(
+            total=total, done=done, unsc=unsc, pending=pending,
+            active=active, inactive=total - active,
+            chart_sto=chart_sto, chart_feedback=chart_feedback,
+            chart_umur=chart_umur, chart_trend=chart_trend,
+            top_suberror=top_suberror,
+        )
+ 
     except Exception as e:
-        print(f"[DASHBOARD STATS ERROR] {e}")
-        return dict(total=0, done=0, unsc=0, pending=0, active=0, inactive=0)
-
+        print(f'[DASHBOARD STATS ERROR] {e}')
+        return empty
+ 
+ 
 @flask_app.route('/dashboard')
 @login_required
 def dashboard():
     stats = _compute_dashboard_stats()
     last_sync_str = get_last_sync_time()
-    # Count unseen new rows
     unseen = 0
     try:
         user_name = session['user']['username']
@@ -755,20 +842,41 @@ def dashboard():
             unseen = cur.fetchone()['c']
     except Exception:
         pass
+ 
+    # Format top_suberror untuk template: list of (index, item)
+    top_suberror = list(enumerate(stats.get('top_suberror', []), start=1))
+ 
     return render_template(
         'dashboard.html',
-        total=stats['total'], done=stats['done'], unsc=stats['unsc'], pending=stats['pending'],
-        active=stats['active'], inactive=stats['inactive'],
-        last_sync=last_sync_str, user=session['user'],
-        unseen_new_rows=unseen,
+        total   = stats['total'],
+        done    = stats['done'],
+        unsc    = stats['unsc'],
+        pending = stats['pending'],
+        active  = stats['active'],
+        inactive= stats['inactive'],
+        chart_sto      = stats['chart_sto'],
+        chart_feedback = stats['chart_feedback'],
+        chart_umur     = stats['chart_umur'],
+        chart_trend    = stats['chart_trend'],
+        top_suberror   = top_suberror,
+        last_sync      = last_sync_str,
+        user           = session['user'],
+        unseen_new_rows= unseen,
     )
-
+ 
+ 
 @flask_app.route('/dashboard_stats')
 @api_login_required
-def api_dashboard_stats():
+def dashboard_stats():
+    """Endpoint real-time polling untuk angka kartu statistik."""
     stats = _compute_dashboard_stats()
-    stats['last_sync'] = get_last_sync_time()
-    return jsonify(stats)
+    return jsonify(
+        total  = stats['total'],
+        done   = stats['done'],
+        unsc   = stats['unsc'],
+        pending= stats['pending'],
+        active = stats['active'],
+    )
 
 # =====================================================================
 # ROUTES - KENDALA MASTER (with Quick Edit + New Data Highlight)
@@ -797,11 +905,15 @@ def kendala_master():
     error = None; pagination = {}; data_to_render = []; header_to_render = []
     feedback_options = []; actual_options = []; is_active_options = ['ACTIVE', 'INACTIVE']
 
-    filter_sto = request.args.get('sto', '')
-    filter_status = request.args.get('status', '')
-    filter_feedback = request.args.get('feedback', '')
-    filter_new_only = request.args.get('new_only', '0') == '1'
-    search_query = request.args.get('search', '').strip().lower()
+    filter_sto       = request.args.get('sto', '')
+    filter_status    = request.args.get('status', '')
+    filter_feedback  = request.args.get('feedback', '')
+    filter_new_only  = request.args.get('new_only', '0') == '1'
+    search_query     = request.args.get('search', '').strip().lower()
+    filter_is_active = request.args.get('is_active', '')
+    filter_umur      = request.args.get('umur', '')
+    filter_date_from = request.args.get('date_from', '')
+    filter_date_to   = request.args.get('date_to', '')
 
     try:
         current_page = max(request.args.get('p', 1, type=int), 1)
@@ -841,6 +953,30 @@ def kendala_master():
                 if col in df.columns:
                     mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False)
             df = df[mask]
+
+        # ── Filter tambahan: IS_ACTIVE, UMUR KENDALA, tanggal ──
+        if filter_is_active and 'IS_ACTIVE_KENDALA' in df.columns:
+            df = df[df['IS_ACTIVE_KENDALA'] == filter_is_active]
+
+        if filter_umur and 'UMUR KENDALA' in df.columns:
+            df = df[df['UMUR KENDALA'].str.strip().str.upper() == filter_umur.upper()]
+
+        if filter_date_from and 'ORDER_DATE_DT' in df.columns:
+            try:
+                dt_from = pd.to_datetime(filter_date_from, dayfirst=True, errors='coerce')
+                if pd.notna(dt_from):
+                    df = df[df['ORDER_DATE_DT'] >= dt_from]
+            except Exception:
+                pass
+
+        if filter_date_to and 'ORDER_DATE_DT' in df.columns:
+            try:
+                dt_to = pd.to_datetime(filter_date_to, dayfirst=True, errors='coerce') + pd.Timedelta(days=1)
+                if pd.notna(dt_to):
+                    df = df[df['ORDER_DATE_DT'] < dt_to]
+            except Exception:
+                pass
+
 
         total_rows = len(df)
         total_pages = max((total_rows + per_page - 1) // per_page, 1)
@@ -898,6 +1034,10 @@ def kendala_master():
             'sto': filter_sto, 'status': filter_status,
             'feedback': filter_feedback, 'search': search_query,
             'new_only': '1' if filter_new_only else '',
+            'is_active':  filter_is_active,
+            'umur':       filter_umur,
+            'date_from':  filter_date_from,
+            'date_to':    filter_date_to,
         }
 
         return render_template(
