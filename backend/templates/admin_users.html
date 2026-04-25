@@ -1,0 +1,498 @@
+{% extends 'base.html' %}
+{% block title %}Manajemen User - FilterIN{% endblock %}
+
+{% block head_extra %}
+<style>
+/* ── Layout ── */
+.admin-wrap { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.admin-header h1 { margin: 0; font-size: 22px; color: var(--text, #1e293b); }
+
+/* ── User cards ── */
+.user-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+.user-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s;
+    position: relative;
+}
+.user-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.user-card.is-self {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+}
+
+.user-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: #fff;
+    margin-bottom: 10px;
+}
+.avatar-admin    { background: linear-gradient(135deg, #dc2626, #ef4444); }
+.avatar-operator { background: linear-gradient(135deg, #2563eb, #3b82f6); }
+.avatar-viewer   { background: linear-gradient(135deg, #059669, #10b981); }
+
+.user-name { font-weight: 700; font-size: 15px; color: var(--text, #1e293b); margin-bottom: 2px; }
+.user-uname { font-size: 12px; color: var(--text-muted, #64748b); margin-bottom: 8px; }
+
+.role-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.role-admin    { background: #fef2f2; color: #dc2626; }
+.role-operator { background: #eff6ff; color: #2563eb; }
+.role-viewer   { background: #f0fdf4; color: #16a34a; }
+
+.self-badge {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: #3b82f6;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+.user-meta {
+    font-size: 11px;
+    color: var(--text-muted, #94a3b8);
+    margin-top: 8px;
+    margin-bottom: 12px;
+}
+
+.user-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.btn-sm {
+    padding: 5px 12px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: opacity 0.15s;
+}
+.btn-sm:hover { opacity: 0.85; }
+.btn-edit     { background: #eff6ff; color: #2563eb; }
+.btn-reset-pw { background: #fef3c7; color: #92400e; }
+.btn-delete   { background: #fef2f2; color: #dc2626; }
+.btn-primary-sm { background: #2563eb; color: #fff; }
+
+/* ── Add user form ── */
+.add-user-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.add-user-card h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text, #1e293b);
+    margin: 0 0 16px;
+}
+.form-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+.form-group {
+    flex: 1;
+    min-width: 150px;
+}
+.form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted, #555);
+    margin-bottom: 4px;
+}
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--surface, #fff);
+    color: var(--text, #333);
+}
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+
+/* ── Modal edit/reset ── */
+.modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+.modal-backdrop.show { display: flex; }
+.modal-box {
+    background: var(--surface, #fff);
+    border-radius: 12px;
+    padding: 24px 28px;
+    width: 400px;
+    max-width: 95vw;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+}
+.modal-box h3 {
+    margin: 0 0 16px;
+    font-size: 17px;
+    color: var(--text, #1e293b);
+}
+.modal-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+.btn-cancel-modal {
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: 1px solid var(--border, #ccc);
+    background: var(--surface, #fff);
+    color: var(--text, #333);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.btn-confirm-modal {
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: none;
+    background: #2563eb;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.btn-confirm-modal.danger { background: #dc2626; }
+
+/* Stats bar */
+.user-stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.user-stat-item {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 13px;
+    color: var(--text, #333);
+}
+.user-stat-item strong { font-size: 22px; display: block; line-height: 1.2; }
+.user-stat-item span { color: var(--text-muted, #64748b); font-size: 11px; }
+
+/* Dark mode */
+[data-theme="dark"] .user-card { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .add-user-card { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .user-stat-item { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .modal-box { background: var(--surface); }
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group select {
+    background: var(--surface-2) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+[data-theme="dark"] .btn-edit     { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .btn-reset-pw { background: #422006; color: #fde68a; }
+[data-theme="dark"] .btn-delete   { background: #3b1111; color: #fca5a5; }
+[data-theme="dark"] .role-admin    { background: #3b1111; color: #fca5a5; }
+[data-theme="dark"] .role-operator { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .role-viewer   { background: #14532d; color: #86efac; }
+[data-theme="dark"] .btn-cancel-modal {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-wrap">
+
+    <div class="admin-header">
+        <h1><i class="fa-solid fa-users-gear"></i> Manajemen User</h1>
+        <button class="btn-sm btn-primary-sm" onclick="toggleAddForm()">
+            <i class="fa-solid fa-plus"></i> Tambah User Baru
+        </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="user-stats">
+        <div class="user-stat-item">
+            <strong>{{ users|length }}</strong>
+            <span>Total User</span>
+        </div>
+        <div class="user-stat-item">
+            <strong style="color:#dc2626;">{{ users|selectattr('role','equalto','admin')|list|length }}</strong>
+            <span>Admin</span>
+        </div>
+        <div class="user-stat-item">
+            <strong style="color:#2563eb;">{{ users|selectattr('role','equalto','operator')|list|length }}</strong>
+            <span>Operator</span>
+        </div>
+        <div class="user-stat-item">
+            <strong style="color:#16a34a;">{{ users|selectattr('role','equalto','viewer')|list|length }}</strong>
+            <span>Viewer</span>
+        </div>
+    </div>
+
+    <!-- Form tambah user (collapsed default) -->
+    <div class="add-user-card" id="add-user-form" style="display:none;">
+        <h2><i class="fa-solid fa-user-plus" style="color:#2563eb;"></i> Tambah User Baru</h2>
+        <form method="POST" action="{{ url_for('admin_add_user') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nama Lengkap *</label>
+                    <input type="text" name="nama" placeholder="contoh: Budi Santoso" required>
+                </div>
+                <div class="form-group">
+                    <label>Username *</label>
+                    <input type="text" name="username" placeholder="contoh: budi123" required>
+                </div>
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" name="password" placeholder="Min. 6 karakter" required minlength="6">
+                </div>
+                <div class="form-group" style="max-width:130px;">
+                    <label>Role *</label>
+                    <select name="role" required>
+                        <option value="operator" selected>Operator</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap:8px; align-items:flex-end;">
+                    <button type="submit" class="btn-sm btn-primary-sm">
+                        <i class="fa-solid fa-save"></i> Simpan
+                    </button>
+                    <button type="button" class="btn-sm btn-cancel-modal" onclick="toggleAddForm()">
+                        Batal
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Daftar user -->
+    <div class="user-grid">
+        {% for u in users %}
+        {% set is_self = (u.username == current_user.username) %}
+        <div class="user-card {% if is_self %}is-self{% endif %}">
+            {% if is_self %}
+                <span class="self-badge">Anda</span>
+            {% endif %}
+
+            <!-- Avatar -->
+            <div class="user-avatar avatar-{{ u.role or 'operator' }}">
+                {{ (u.nama or u.username)[0]|upper }}
+            </div>
+
+            <div class="user-name">{{ u.nama }}</div>
+            <div class="user-uname">@{{ u.username }}</div>
+
+            <span class="role-badge role-{{ u.role or 'operator' }}">
+                {% if u.role == 'admin' %}<i class="fa-solid fa-shield-halved"></i>{% endif %}
+                {% if u.role == 'operator' %}<i class="fa-solid fa-user-gear"></i>{% endif %}
+                {% if u.role == 'viewer' %}<i class="fa-solid fa-eye"></i>{% endif %}
+                {{ u.role or 'operator' }}
+            </span>
+
+            <div class="user-meta">
+                <i class="fa-solid fa-clock"></i>
+                Login terakhir:
+                {% if u.last_login %}
+                    {{ u.last_login.strftime('%d/%m/%Y %H:%M') if u.last_login else '—' }}
+                {% else %}
+                    Belum pernah login
+                {% endif %}
+            </div>
+
+            <div class="user-actions">
+                <!-- Edit Role -->
+                <button class="btn-sm btn-edit"
+                        onclick="openEditModal({{ u.id }}, '{{ u.nama }}', '{{ u.username }}', '{{ u.role or 'operator' }}')">
+                    <i class="fa-solid fa-pen"></i> Edit Role
+                </button>
+
+                <!-- Reset Password -->
+                <button class="btn-sm btn-reset-pw"
+                        onclick="openResetModal({{ u.id }}, '{{ u.nama }}')">
+                    <i class="fa-solid fa-key"></i> Reset PW
+                </button>
+
+                <!-- Hapus (tidak bisa hapus diri sendiri) -->
+                {% if not is_self %}
+                <button class="btn-sm btn-delete"
+                        onclick="openDeleteModal({{ u.id }}, '{{ u.nama }}', '{{ u.username }}')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<!-- ── Modal Edit Role ── -->
+<div class="modal-backdrop" id="modal-edit">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-pen" style="color:#2563eb;"></i> Edit Role User</h3>
+        <form method="POST" action="{{ url_for('admin_edit_user') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" id="edit-user-id">
+            <div class="form-group" style="margin-bottom:14px;">
+                <label>User</label>
+                <input type="text" id="edit-user-name" readonly
+                       style="background:var(--surface-2,#f1f5f9); cursor:not-allowed;">
+            </div>
+            <div class="form-group">
+                <label>Role Baru</label>
+                <select name="role" id="edit-user-role">
+                    <option value="operator">Operator</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel-modal" onclick="closeModal('modal-edit')">Batal</button>
+                <button type="submit" class="btn-confirm-modal">Simpan Perubahan</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── Modal Reset Password ── -->
+<div class="modal-backdrop" id="modal-reset">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-key" style="color:#d97706;"></i> Reset Password</h3>
+        <p id="reset-user-label" style="color:var(--text-muted,#555); font-size:14px; margin-bottom:14px;"></p>
+        <form method="POST" action="{{ url_for('admin_reset_password') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" id="reset-user-id">
+            <div class="form-group">
+                <label>Password Baru *</label>
+                <input type="password" name="new_password" id="reset-new-pw"
+                       placeholder="Min. 6 karakter" required minlength="6">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel-modal" onclick="closeModal('modal-reset')">Batal</button>
+                <button type="submit" class="btn-confirm-modal">Reset Password</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── Modal Hapus User ── -->
+<div class="modal-backdrop" id="modal-delete">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> Hapus User</h3>
+        <p id="delete-user-label" style="color:var(--text,#333); font-size:14px; margin-bottom:14px;"></p>
+        <p style="color:#dc2626; font-size:13px; font-weight:600;">
+            ⚠️ Tindakan ini tidak bisa dibatalkan!
+        </p>
+        <form method="POST" action="{{ url_for('admin_delete_user') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" id="delete-user-id">
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel-modal" onclick="closeModal('modal-delete')">Batal</button>
+                <button type="submit" class="btn-confirm-modal danger">Ya, Hapus</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+function toggleAddForm() {
+    const f = document.getElementById('add-user-form');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+function openEditModal(id, nama, username, role) {
+    document.getElementById('edit-user-id').value   = id;
+    document.getElementById('edit-user-name').value = nama + ' (@' + username + ')';
+    document.getElementById('edit-user-role').value = role;
+    document.getElementById('modal-edit').classList.add('show');
+}
+
+function openResetModal(id, nama) {
+    document.getElementById('reset-user-id').value     = id;
+    document.getElementById('reset-user-label').textContent = 'Reset password untuk: ' + nama;
+    document.getElementById('reset-new-pw').value      = '';
+    document.getElementById('modal-reset').classList.add('show');
+}
+
+function openDeleteModal(id, nama, username) {
+    document.getElementById('delete-user-id').value      = id;
+    document.getElementById('delete-user-label').textContent =
+        'Apakah Anda yakin ingin menghapus akun "' + nama + '" (@' + username + ')?';
+    document.getElementById('modal-delete').classList.add('show');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+}
+
+// Tutup modal klik backdrop
+document.querySelectorAll('.modal-backdrop').forEach(el => {
+    el.addEventListener('click', function(e) {
+        if (e.target === this) closeModal(this.id);
+    });
+});
+
+// Tutup modal dengan Escape
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-backdrop.show').forEach(el => {
+            el.classList.remove('show');
+        });
+    }
+});
+</script>
+{% endblock %}

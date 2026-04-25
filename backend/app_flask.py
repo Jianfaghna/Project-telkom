@@ -1138,7 +1138,39 @@ def api_kendala_row(row_num):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@flask_app.route('/lock', methods=['POST'])
+@flask_app.route('/order_history/<path:order_id>')
+@login_required
+def order_history(order_id):
+    """Ambil riwayat perubahan untuk satu Order ID dari audit_log."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """SELECT
+                    a.username,
+                    COALESCE(u.nama, a.username) AS nama,
+                    a.column_name,
+                    a.old_value,
+                    a.new_value,
+                    DATE_FORMAT(a.timestamp, '%%d/%%m/%%Y %%H:%%i') AS timestamp
+                FROM audit_log a
+                LEFT JOIN users u ON u.username = a.username
+                WHERE a.row_key = %s
+                  AND a.action IN ('update_row', 'update_bulk')
+                  AND a.column_name IN (
+                    'ACTUAL KENDALA', 'FEEDBACK ASO',
+                    'TGL FEEDBACK', 'NOTES ASO', 'IS_ACTIVE_KENDALA'
+                  )
+                ORDER BY a.timestamp DESC
+                LIMIT 50""",
+                (order_id,)
+            )
+            rows = cur.fetchall()
+        return jsonify({'history': rows})
+    except Exception as e:
+        return jsonify({'history': [], 'error': str(e)}), 500
+
+
+
 @api_login_required
 def api_lock():
     """Acquire soft lock on a row before editing."""
@@ -1645,6 +1677,155 @@ def hapus_kolom():
         flash(f"Gagal: {e}", "error")
         traceback.print_exc()
     return redirect(url_for('tabel', kelas=kelas))
+
+# =====================================================================
+# =====================================================================
+# ROUTES - ADMIN USER MANAGEMENT
+# =====================================================================
+
+@flask_app.route('/admin/users')
+@login_required
+@role_required('admin')
+def admin_users():
+    """Halaman manajemen user — hanya admin."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "SELECT id, nama, username, role, created_at, last_login "
+                "FROM users ORDER BY role, nama"
+            )
+            users = cur.fetchall()
+    except Exception as e:
+        flash(f'Gagal ambil data user: {e}', 'error')
+        users = []
+    return render_template(
+        'admin_users.html',
+        users        = users,
+        current_user = session['user'],
+    )
+
+
+@flask_app.route('/admin/users/add', methods=['POST'])
+@login_required
+@role_required('admin')
+def admin_add_user():
+    """Tambah user baru."""
+    nama     = request.form.get('nama', '').strip()
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '')
+    role     = request.form.get('role', 'operator')
+
+    if not nama or not username or not password:
+        flash('Nama, username, dan password wajib diisi.', 'error')
+        return redirect(url_for('admin_users'))
+    if len(password) < 6:
+        flash('Password minimal 6 karakter.', 'error')
+        return redirect(url_for('admin_users'))
+    if role not in ('admin', 'operator', 'viewer'):
+        role = 'operator'
+
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "INSERT INTO users (nama, username, password, role) VALUES (%s, %s, %s, %s)",
+                (nama, username, generate_password_hash(password), role)
+            )
+        audit('admin_add_user', new_value=f'{username} ({role})')
+        flash(f'User @{username} berhasil ditambahkan.', 'success')
+    except pymysql.err.IntegrityError:
+        flash(f'Username "{username}" sudah dipakai, coba yang lain.', 'error')
+    except Exception as e:
+        flash(f'Gagal tambah user: {e}', 'error')
+    return redirect(url_for('admin_users'))
+
+
+@flask_app.route('/admin/users/edit', methods=['POST'])
+@login_required
+@role_required('admin')
+def admin_edit_user():
+    """Ubah role user."""
+    user_id  = request.form.get('user_id', type=int)
+    new_role = request.form.get('role', 'operator')
+
+    if new_role not in ('admin', 'operator', 'viewer'):
+        flash('Role tidak valid.', 'error')
+        return redirect(url_for('admin_users'))
+
+    # Cegah admin mengubah role dirinya sendiri
+    if user_id == session['user']['id']:
+        flash('Tidak bisa mengubah role akun Anda sendiri.', 'error')
+        return redirect(url_for('admin_users'))
+
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "UPDATE users SET role=%s WHERE id=%s",
+                (new_role, user_id)
+            )
+            cur.execute("SELECT username FROM users WHERE id=%s", (user_id,))
+            row = cur.fetchone()
+        audit('admin_edit_role', new_value=f'id={user_id} → {new_role}')
+        uname = row['username'] if row else f'id={user_id}'
+        flash(f'Role @{uname} diubah menjadi {new_role}.', 'success')
+    except Exception as e:
+        flash(f'Gagal ubah role: {e}', 'error')
+    return redirect(url_for('admin_users'))
+
+
+@flask_app.route('/admin/users/reset_password', methods=['POST'])
+@login_required
+@role_required('admin')
+def admin_reset_password():
+    """Reset password user oleh admin."""
+    user_id      = request.form.get('user_id', type=int)
+    new_password = request.form.get('new_password', '')
+
+    if len(new_password) < 6:
+        flash('Password minimal 6 karakter.', 'error')
+        return redirect(url_for('admin_users'))
+
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "UPDATE users SET password=%s WHERE id=%s",
+                (generate_password_hash(new_password), user_id)
+            )
+            cur.execute("SELECT username FROM users WHERE id=%s", (user_id,))
+            row = cur.fetchone()
+        audit('admin_reset_password', new_value=f'id={user_id}')
+        uname = row['username'] if row else f'id={user_id}'
+        flash(f'Password @{uname} berhasil direset.', 'success')
+    except Exception as e:
+        flash(f'Gagal reset password: {e}', 'error')
+    return redirect(url_for('admin_users'))
+
+
+@flask_app.route('/admin/users/delete', methods=['POST'])
+@login_required
+@role_required('admin')
+def admin_delete_user():
+    """Hapus user."""
+    user_id = request.form.get('user_id', type=int)
+
+    # Cegah admin menghapus dirinya sendiri
+    if user_id == session['user']['id']:
+        flash('Tidak bisa menghapus akun Anda sendiri.', 'error')
+        return redirect(url_for('admin_users'))
+
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("SELECT username, nama FROM users WHERE id=%s", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                flash('User tidak ditemukan.', 'error')
+                return redirect(url_for('admin_users'))
+            cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+        audit('admin_delete_user', new_value=f'{row["username"]} ({row["nama"]})')
+        flash(f'User @{row["username"]} berhasil dihapus.', 'success')
+    except Exception as e:
+        flash(f'Gagal hapus user: {e}', 'error')
+    return redirect(url_for('admin_users'))
+
 
 # =====================================================================
 # ROUTES - AUDIT LOG (admin only)

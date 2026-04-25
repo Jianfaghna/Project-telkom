@@ -172,6 +172,24 @@
                 </select>
               </div>
             </form>
+
+            <!-- ── RIWAYAT PERUBAHAN ── -->
+            <div class="qe-history-section" id="qe-history-section">
+              <div class="qe-history-header">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <span>Riwayat Perubahan Order Ini</span>
+                <button type="button" class="qe-history-toggle" id="qe-history-toggle"
+                        onclick="toggleHistory()" title="Tampilkan/sembunyikan">
+                  <i class="fa-solid fa-chevron-down" id="qe-history-chevron"></i>
+                </button>
+              </div>
+              <div class="qe-history-body" id="qe-history-body">
+                <div class="qe-history-loading" id="qe-history-loading">
+                  <i class="fa-solid fa-spinner fa-spin"></i> Memuat riwayat…
+                </div>
+                <div id="qe-history-list"></div>
+              </div>
+            </div>
           </div>
           <div class="qe-modal-footer">
             <div class="qe-footer-hint">
@@ -265,6 +283,10 @@
         return;
       }
       fillForm(res.row || {});
+
+      // ── Fetch history riwayat perubahan ──
+      loadOrderHistory(rowKey);
+
     } catch (e) {
       window.toast('Error: ' + e.message, 'error');
     }
@@ -347,4 +369,85 @@
       window.hideLoading();
     }
   };
+
+  // ── HISTORY ──────────────────────────────────────────
+  let historyOpen = true;
+
+  async function loadOrderHistory(orderKey) {
+    const body    = document.getElementById('qe-history-body');
+    const loading = document.getElementById('qe-history-loading');
+    const list    = document.getElementById('qe-history-list');
+    if (!body || !list) return;
+
+    body.style.display = 'block';
+    loading.style.display = 'flex';
+    list.innerHTML = '';
+    historyOpen = true;
+    const chevron = document.getElementById('qe-history-chevron');
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+
+    try {
+      const res  = await fetch(`/order_history/${encodeURIComponent(orderKey)}`);
+      const data = await res.json();
+      loading.style.display = 'none';
+
+      if (!data.history || data.history.length === 0) {
+        list.innerHTML = `
+          <div class="qe-history-empty">
+            <i class="fa-solid fa-inbox"></i>
+            <span>Belum ada riwayat perubahan untuk order ini.</span>
+          </div>`;
+        return;
+      }
+
+      // Kelompokkan by timestamp + username
+      const groups = [];
+      let cur = null;
+      data.history.forEach(h => {
+        const key = h.timestamp + '||' + h.username;
+        if (!cur || cur.key !== key) {
+          cur = { key, timestamp: h.timestamp, username: h.username,
+                  nama: h.nama || h.username, changes: [] };
+          groups.push(cur);
+        }
+        cur.changes.push(h);
+      });
+
+      list.innerHTML = groups.map((g, idx) => `
+        <div class="qe-history-item ${idx === 0 ? 'latest' : ''}">
+          <div class="qe-history-meta">
+            <span class="qh-avatar">${(g.nama || g.username)[0].toUpperCase()}</span>
+            <span class="qh-name">${g.nama}</span>
+            <span class="qh-uname">@${g.username}</span>
+            <span class="qh-time">${g.timestamp}</span>
+            ${idx === 0 ? '<span class="qh-latest-badge">Terbaru</span>' : ''}
+          </div>
+          <div class="qh-changes">
+            ${g.changes.map(c => `
+              <div class="qh-change-row">
+                <span class="qh-col">${c.column_name || '—'}</span>
+                <span class="qh-old">${c.old_value || '(kosong)'}</span>
+                <span class="qh-to">→</span>
+                <span class="qh-new">${c.new_value || '(kosong)'}</span>
+              </div>`).join('')}
+          </div>
+        </div>`).join('');
+
+    } catch (e) {
+      loading.style.display = 'none';
+      list.innerHTML = `<div class="qe-history-empty">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <span>Gagal memuat riwayat.</span></div>`;
+    }
+  }
+
+  window.toggleHistory = function() {
+    const body    = document.getElementById('qe-history-body');
+    const chevron = document.getElementById('qe-history-chevron');
+    if (!body) return;
+    historyOpen = !historyOpen;
+    body.style.display = historyOpen ? 'block' : 'none';
+    if (chevron) chevron.style.transform = historyOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
+  };
+
 })();

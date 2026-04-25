@@ -316,16 +316,66 @@
     .summary-item .s-label { font-size: 9px !important; }
     .summary-item { padding: 10px 14px !important; }
 
-    /* Print header */
+    /* Print header — dengan logo */
     .print-header {
         display: block !important;
-        text-align: center;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #0b3d91;
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+        border-bottom: 3px solid #e10600;
     }
-    .print-header h2 { margin: 0; font-size: 14px; color: #0b3d91; }
-    .print-header p  { margin: 3px 0 0; font-size: 10px; color: #555; }
+    .print-header-inner {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    }
+    .print-header-logo {
+        display: flex !important;
+        align-items: center;
+        gap: 10px;
+    }
+    .print-header-logo img {
+        height: 40px;
+        width: auto;
+        object-fit: contain;
+    }
+    .print-header-logo .divider-line {
+        width: 1px;
+        height: 36px;
+        background: #ccc;
+        display: block !important;
+    }
+    .print-header-logo .brand-text {
+        font-size: 18px;
+        font-weight: 700;
+        color: #0b3d91;
+        letter-spacing: 0.5px;
+    }
+    .print-header-logo .brand-text span { color: #e10600; }
+    .print-header-title {
+        text-align: center;
+        flex: 1;
+    }
+    .print-header-title h2 {
+        margin: 0 0 3px;
+        font-size: 13px;
+        font-weight: 800;
+        color: #0b3d91;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .print-header-title p {
+        margin: 0;
+        font-size: 9px;
+        color: #666;
+    }
+    .print-header-right {
+        text-align: right;
+        font-size: 9px;
+        color: #555;
+        line-height: 1.6;
+    }
+    .print-header-right strong { font-size: 11px; color: #0b3d91; }
 
     /* Recap header screen — sembunyikan di print */
     .recap-header { display: none !important; }
@@ -333,11 +383,43 @@
     /* Section title font */
     .recap-section-title { font-size: 10px !important; padding: 8px 12px !important; }
 
+    /* ODP tabel — jangan terpotong, wrap teks */
+    .odp-section .recap-table {
+        white-space: normal !important;
+        word-break: break-word !important;
+        font-size: 7.5px !important;
+        table-layout: fixed !important;
+        width: 100% !important;
+    }
+    .odp-section .recap-table th,
+    .odp-section .recap-table td {
+        white-space: normal !important;
+        word-break: break-word !important;
+        padding: 4px 6px !important;
+        vertical-align: top !important;
+    }
+    /* Lebar kolom ODP — proporsional */
+    .odp-section .recap-table th:nth-child(1),
+    .odp-section .recap-table td:nth-child(1) { width: 10%; }  /* ORDER DATE */
+    .odp-section .recap-table th:nth-child(2),
+    .odp-section .recap-table td:nth-child(2) { width: 10%; }  /* DATEL */
+    .odp-section .recap-table th:nth-child(3),
+    .odp-section .recap-table td:nth-child(3) { width: 28%; }  /* ORDER ID */
+    .odp-section .recap-table th:nth-child(4),
+    .odp-section .recap-table td:nth-child(4) { width: 15%; }  /* VALIDASI ODP */
+    .odp-section .recap-table th:nth-child(5),
+    .odp-section .recap-table td:nth-child(5) { width: 37%; }  /* TINJUT */
+
     body { font-size: 9px; }
 }
 
 /* Print header — hidden on screen */
 .print-header { display: none; }
+.print-header-inner,
+.print-header-logo,
+.print-header-logo .divider-line,
+.print-header-title,
+.print-header-right { display: none; }
 </style>
 {% endblock %}
 
@@ -346,8 +428,29 @@
 
     <!-- Print header (hanya muncul saat print) -->
     <div class="print-header">
-        <h2>RECAP REPORT — FILTERIN TELKOM MAGELANG</h2>
-        <p>Tanggal Cetak: {{ now_str }} &nbsp;|&nbsp; Total WO Aktif: {{ stats.wo_active_ao }}</p>
+        <div class="print-header-inner">
+            <!-- Kiri: Logo Telkom + FilterIN -->
+            <div class="print-header-logo">
+                <img src="{{ url_for('static', filename='img/logo_telkom.png') }}"
+                     alt="Telkom Indonesia">
+                <div class="divider-line"></div>
+                <div class="brand-text">Filter<span>IN</span></div>
+            </div>
+
+            <!-- Tengah: Judul -->
+            <div class="print-header-title">
+                <h2>Recap Report Operasional</h2>
+                <p>Telkom Witel Magelang — FMC AO PDA</p>
+            </div>
+
+            <!-- Kanan: Info cetak -->
+            <div class="print-header-right">
+                <strong>Tanggal Cetak:</strong><br>
+                {{ now_str }}<br>
+                <strong>Total WO Aktif:</strong><br>
+                {{ stats.current_active }}
+            </div>
+        </div>
     </div>
 
     <!-- Page header -->

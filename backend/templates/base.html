@@ -48,7 +48,17 @@
                     </ul>
                 </li>
 
-                
+                <li class="item">
+                    <div class="submenu-item" data-testid="nav-program">
+                        <i class="fa-solid fa-cogs"></i><span>PROGRAM</span>
+                        <i class="fa-solid fa-chevron-right ms-auto"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li><a href="#">IMPLEMENTASI DC REFURBISH</a></li>
+                        <li><a href="#">IMPLEMENTASI PASSIVE 1:2</a></li>
+                    </ul>
+                </li>
+
                 <li class="item">
                     <div class="submenu-item" data-testid="nav-kpi">
                         <i class="fa-solid fa-database"></i><span>DATA KPI</span>
@@ -72,31 +82,25 @@
                         <li><a href="{{ url_for('tabel', kelas='04') }}" data-testid="nav-bima-master">BIMA MASTER</a></li>
                         <li><a href="{{ url_for('tabel', kelas='05') }}" data-testid="nav-kpro">KPRO</a></li>
                         <li><a href="{{ url_for('tabel', kelas='06') }}" data-testid="nav-bima">BIMA</a></li>
-                        <li><a href="{{ url_for('recap') }}">RECAP REPORT</a></li>
                     </ul>
                 </li>
 
                 <li class="item">
-                    <div class="submenu-item" data-testid="nav-laporan">
-                        <i class="fa-solid fa-flag"></i><span>Laporan</span>
-                        <i class="fa-solid fa-chevron-right ms-auto"></i>
-                    </div>
-                    <ul class="submenu">
-                        <li><a href="{{ url_for('wokendala') }}">WO Kendala</a></li>
-                        <li><a href="{{ url_for('psretti') }}">PS RE</a></li>
-                        <li><a href="{{ url_for('datel') }}">Datel</a></li>
-                        <li><a href="{{ url_for('verifikasi_odp_full') }}">Verifikasi ODP FULL</a></li>
-                        <li><a href="{{ url_for('summary') }}">Summary</a></li>
-                        <li><a href="{{ url_for('tati') }}">TATI</a></li>
-                        <li><a href="{{ url_for('lapvalidasiodp') }}">Laporan Validasi ODP</a></li>
-                        <li><a href="{{ url_for('newsummarykendala') }}">NEW SUMMARY KENDALA</a></li>
-                    </ul>
+                    <a href="{{ url_for('recap') }}" data-testid="nav-recap">
+                        <i class="fa-solid fa-chart-bar"></i>
+                        <span>Laporan / Recap</span>
+                    </a>
                 </li>
 
                 {% if user_role == 'admin' %}
                 <li class="item {% if request.endpoint == 'audit_log_view' %}active{% endif %}">
                     <a href="{{ url_for('audit_log_view') }}" data-testid="nav-audit">
                         <i class="fa-solid fa-clipboard-list"></i><span>Audit Log</span>
+                    </a>
+                </li>
+                <li class="item {% if request.endpoint == 'admin_users' %}active{% endif %}">
+                    <a href="{{ url_for('admin_users') }}" data-testid="nav-admin-users">
+                        <i class="fa-solid fa-users-gear"></i><span>Manajemen User</span>
                     </a>
                 </li>
                 {% endif %}
