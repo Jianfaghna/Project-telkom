@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Data KPI IndiHome - FilterIN{% endblock %}
+
+{% block head_extra %}
+<style>
+.kpi-wrap { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
+.kpi-wrap h1 { font-size: 22px; color: var(--text, #1e293b); margin-bottom: 6px; }
+.kpi-subtitle { font-size: 14px; color: var(--text-muted, #64748b); margin-bottom: 24px; }
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+.kpi-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+}
+.kpi-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    text-decoration: none;
+    color: inherit;
+}
+.kpi-card-top {
+    padding: 20px 22px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+.kpi-icon {
+    width: 48px; height: 48px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    color: #fff;
+    flex-shrink: 0;
+}
+.kpi-card-info { flex: 1; }
+.kpi-card-label {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--text, #1e293b);
+    margin-bottom: 4px;
+}
+.kpi-card-desc {
+    font-size: 12px;
+    color: var(--text-muted, #64748b);
+}
+.kpi-card-footer {
+    padding: 12px 22px;
+    border-top: 1px solid var(--border, #f1f5f9);
+    background: var(--surface-2, #f8fafc);
+    font-size: 12px;
+    color: var(--text-muted, #64748b);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.kpi-card-footer .last-by { font-weight: 600; color: var(--text, #334155); }
+.kpi-card-footer .never { font-style: italic; color: var(--text-muted, #94a3b8); }
+.kpi-card-footer i { color: #3b82f6; }
+.kpi-arrow {
+    margin-left: auto;
+    color: var(--text-muted, #94a3b8);
+    font-size: 14px;
+}
+
+/* Dark mode */
+[data-theme="dark"] .kpi-card { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .kpi-card-footer { background: var(--surface-2); border-color: var(--border); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kpi-wrap">
+    <h1><i class="fa-solid fa-database" style="color:#2563eb;"></i> Data KPI IndiHome</h1>
+    <p class="kpi-subtitle">
+        Upload data dari Dashboard Fulfillment Telkom ke Google Sheet KPI.<br>
+        <i class="fa-solid fa-clock"></i> Dikerjakan 1x sehari mulai jam 15.00 &nbsp;|&nbsp;
+        <a href="https://dashboard.telkom.co.id/fulfillment/prabagen/index/page/1566"
+           target="_blank" rel="noopener noreferrer"
+           style="color:#2563eb; font-weight:600;">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Dashboard Fulfillment
+        </a>
+    </p>
+
+    <div class="kpi-grid">
+        {% for ktype, info in kpi_types.items() %}
+        {% set lu = last_uploads.get(ktype) %}
+        <a href="{{ url_for('kpi_detail', kpi_type=ktype) }}" class="kpi-card">
+            <div class="kpi-card-top">
+                <div class="kpi-icon" style="background:{{ info.color }};">
+                    <i class="fa-solid {{ info.icon }}"></i>
+                </div>
+                <div class="kpi-card-info">
+                    <div class="kpi-card-label">{{ info.label }}</div>
+                    <div class="kpi-card-desc">Klik untuk upload &amp; lihat data</div>
+                </div>
+            </div>
+            <div class="kpi-card-footer">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                {% if lu %}
+                    <span>Terakhir: <span class="last-by">{{ lu.nama }}</span> — {{ lu.timestamp }}</span>
+                {% else %}
+                    <span class="never">Belum pernah diupload</span>
+                {% endif %}
+                <i class="fa-solid fa-chevron-right kpi-arrow"></i>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

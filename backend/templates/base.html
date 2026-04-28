@@ -41,6 +41,14 @@
                         <i class="fa-solid fa-chevron-right ms-auto"></i>
                     </div>
                     <ul class="submenu">
+                        <li>
+                            <a href="https://kpro.telkom.co.id/kpro/newteknisi/fulendstate"
+                               target="_blank" rel="noopener noreferrer"
+                               data-testid="nav-kpro-web"
+                               title="Buka website KPRO Telkom">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Web KPRO
+                            </a>
+                        </li>
                         <li><a href="{{ url_for('upload') }}" data-testid="nav-upload"><i class="fa-solid fa-upload"></i> Upload Data</a></li>
                         <li><a href="{{ url_for('kendala_master') }}" data-testid="nav-kendala-master"><i class="fa-solid fa-file-excel"></i> Sheet Kendala Master</a></li>
                         <li><a href="{{ url_for('unsc') }}" data-testid="nav-unsc"><i class="fa-solid fa-file-circle-question"></i> Sheet UNSC</a></li>
@@ -65,11 +73,26 @@
                         <i class="fa-solid fa-chevron-right ms-auto"></i>
                     </div>
                     <ul class="submenu">
-                        <li><a href="#">TTI</a></li>
-                        <li><a href="#">FFG</a></li>
-                        <li><a href="#">TTR FFG</a></li>
-                        <li><a href="#">UNSPEC</a></li>
-                        <li><a href="#">PS/RE</a></li>
+                        <li>
+                            <a href="{{ url_for('kpi_index') }}">
+                                <i class="fa-solid fa-database"></i> Semua KPI
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('kpi_detail', kpi_type='tti') }}">
+                                <i class="fa-solid fa-chart-line"></i> TTI
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('kpi_detail', kpi_type='ffg') }}">
+                                <i class="fa-solid fa-circle-exclamation"></i> FFG
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('kpi_detail', kpi_type='ttr') }}">
+                                <i class="fa-solid fa-wrench"></i> TTR FFG
+                            </a>
+                        </li>
                     </ul>
                 </li>
 

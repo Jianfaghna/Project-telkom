@@ -52,6 +52,7 @@ SPREADSHEET_IDS = {
     'kendala': os.environ['SPREADSHEET_KENDALA'],
     'ODP':     os.environ['SPREADSHEET_ODP'],
     'PSRE':    os.environ['SPREADSHEET_PSRE'],
+    'kpi':     os.environ.get('SPREADSHEET_KPI', '1HU7lSt0ZiZNN9PpjMwcVhl1Sw8FWOGfFvNS6tng7nwQ'),
 }
 
 SHEET_NAMES = {
@@ -63,9 +64,17 @@ SHEET_NAMES = {
         'laporan':       'NEW SUMMARY',
         'tabsum':        'RECAP REPORT',
         'tati':          'TATI',
-        'lapodp':        'LAP VALIDASI ODP', 
+        'lapodp':        'LAP VALIDASI ODP',
     },
     'ODP': {'validasi': 'MONITORING EXPAND 1:2'},
+    'kpi': {
+        'tti_upload':  'upload DB TTI_Total',
+        'ffg_upload':  'upload DB FFG_Total',
+        'ttr_upload':  'upload DB TTR FFG_Total',
+        'tti_result':  'MGL_NC TTI_REG_FM',
+        'ffg_result':  'MGL_NC FFG_REG_FM',
+        'ttr_result':  'MGL_NC TTR FFG_REG_FM',
+    },
 }
 
 SHEET_CACHE_TTL = int(os.environ.get('SHEET_CACHE_TTL', 30))
@@ -1139,7 +1148,7 @@ def api_kendala_row(row_num):
         return jsonify({'error': str(e)}), 500
 
 @flask_app.route('/order_history/<path:order_id>')
-@login_required
+@api_login_required
 def order_history(order_id):
     """Ambil riwayat perubahan untuk satu Order ID dari audit_log."""
     try:
@@ -1170,7 +1179,7 @@ def order_history(order_id):
         return jsonify({'history': [], 'error': str(e)}), 500
 
 
-
+@flask_app.route('/lock', methods=['POST'])
 @api_login_required
 def api_lock():
     """Acquire soft lock on a row before editing."""
@@ -1896,6 +1905,188 @@ def _pivot_2d(df, row_col, col_col):
 # =====================================================================
 # ROUTE /recap — Recap Report lengkap
 # =====================================================================
+# =====================================================================
+# ROUTES - KPI INDIHOME (TTI / FFG / TTR FFG)
+# =====================================================================
+
+KPI_TYPES = {
+    'tti': {
+        'label':       'TTI (Ps Indihome)',
+        'sheet_upload': 'tti_upload',
+        'icon':        'fa-chart-line',
+        'color':       '#2563eb',
+    },
+    'ffg': {
+        'label':       'FFG (Not Comply)',
+        'sheet_upload': 'ffg_upload',
+        'icon':        'fa-circle-exclamation',
+        'color':       '#dc2626',
+    },
+    'ttr': {
+        'label':       'TTR FFG (Jml Ggn WSA)',
+        'sheet_upload': 'ttr_upload',
+        'icon':        'fa-wrench',
+        'color':       '#d97706',
+    },
+}
+
+def _get_kpi_last_upload(kpi_type):
+    """Ambil info terakhir upload KPI dari audit_log."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """SELECT a.timestamp, a.username, COALESCE(u.nama, a.username) AS nama
+                   FROM audit_log a
+                   LEFT JOIN users u ON u.username = a.username
+                   WHERE a.action = %s
+                   ORDER BY a.timestamp DESC LIMIT 1""",
+                (f'kpi_upload_{kpi_type}',)
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    'timestamp': row['timestamp'].strftime('%d/%m/%Y %H:%M') if row['timestamp'] else '—',
+                    'username':  row['username'],
+                    'nama':      row['nama'],
+                }
+    except Exception:
+        pass
+    return None
+
+
+@flask_app.route('/kpi')
+@login_required
+def kpi_index():
+    """Halaman utama KPI — pilih jenis data."""
+    last_uploads = {k: _get_kpi_last_upload(k) for k in KPI_TYPES}
+    return render_template('kpi_index.html',
+        kpi_types    = KPI_TYPES,
+        last_uploads = last_uploads,
+    )
+
+
+@flask_app.route('/kpi/<kpi_type>')
+@login_required
+def kpi_detail(kpi_type):
+    """Halaman detail + tabel data KPI."""
+    if kpi_type not in KPI_TYPES:
+        flash('Jenis KPI tidak valid.', 'error')
+        return redirect(url_for('kpi_index'))
+
+    info        = KPI_TYPES[kpi_type]
+    sheet_key   = info['sheet_upload']
+    sheet_name  = SHEET_NAMES['kpi'][sheet_key]
+    last_upload = _get_kpi_last_upload(kpi_type)
+
+    # Ambil data dari sheet upload
+    header, data, error = [], [], None
+    try:
+        all_values = get_sheet_values(SPREADSHEET_IDS['kpi'], sheet_name)
+        if all_values and len(all_values) >= 1:
+            header = [str(h).strip() for h in all_values[0]]
+            raw    = all_values[1:]
+            data   = [r + [''] * (len(header) - len(r)) for r in raw if any(str(c).strip() for c in r)]
+    except Exception as e:
+        error = str(e)
+
+    return render_template('kpi_detail.html',
+        kpi_type       = kpi_type,
+        info           = info,
+        header         = header,
+        data           = data,
+        error          = error,
+        last_upload    = last_upload,
+        total_rows     = len(data),
+        SHEET_NAMES_KPI= {k: SHEET_NAMES['kpi'][v['sheet_upload']] for k,v in KPI_TYPES.items()},
+        enumerate      = enumerate,
+    )
+
+
+@flask_app.route('/kpi/<kpi_type>/upload', methods=['POST'])
+@login_required
+def kpi_upload(kpi_type):
+    """Upload Excel KPI — replace all data di sheet Google Sheets."""
+    if kpi_type not in KPI_TYPES:
+        flash('Jenis KPI tidak valid.', 'error')
+        return redirect(url_for('kpi_index'))
+
+    info       = KPI_TYPES[kpi_type]
+    sheet_key  = info['sheet_upload']
+    sheet_name = SHEET_NAMES['kpi'][sheet_key]
+
+    # Validasi file
+    f = request.files.get('file')
+    if not f or f.filename == '':
+        flash('Harap pilih file Excel terlebih dahulu.', 'error')
+        return redirect(url_for('kpi_detail', kpi_type=kpi_type))
+
+    ext = f.filename.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        flash('Format file tidak valid. Gunakan .xlsx atau .xls', 'error')
+        return redirect(url_for('kpi_detail', kpi_type=kpi_type))
+
+    try:
+        # Baca Excel — kolom A2 sampai AG (index 0-32)
+        engine = 'xlrd' if ext == 'xls' else 'openpyxl'
+        df = pd.read_excel(f, engine=engine, header=0)
+
+        # Ambil hanya kolom A-AG (max 33 kolom)
+        df = df.iloc[:, :33]
+
+        # Hapus baris yang semua kosong
+        df = df.dropna(how='all')
+
+        if df.empty:
+            flash('File kosong atau tidak ada data yang valid.', 'error')
+            return redirect(url_for('kpi_detail', kpi_type=kpi_type))
+
+        total_excel = len(df)
+
+        # Siapkan data untuk Google Sheets
+        # Baris 1 = header (nama kolom dari Excel)
+        header_row = [str(c).strip() if str(c) != 'nan' else '' for c in df.columns.tolist()]
+        data_rows  = []
+        for _, row in df.iterrows():
+            r = []
+            for v in row:
+                if pd.isna(v):
+                    r.append('')
+                elif isinstance(v, float) and v == int(v):
+                    r.append(int(v))
+                else:
+                    r.append(str(v) if not isinstance(v, (int, float)) else v)
+            data_rows.append(r)
+
+        all_rows = [header_row] + data_rows
+
+        # Tulis ke Google Sheets — replace all
+        ws = get_worksheet(SPREADSHEET_IDS['kpi'], sheet_name)
+
+        # Clear semua data mulai baris 1
+        ws.clear()
+
+        # Batch update
+        ws.update('A1', all_rows, value_input_option='USER_ENTERED')
+
+        # Catat ke audit_log
+        audit(
+            f'kpi_upload_{kpi_type}',
+            sheet_name = sheet_name,
+            new_value  = f'{total_excel} baris dari {f.filename}'
+        )
+
+        flash(
+            f'✅ Berhasil upload {total_excel} baris data {info["label"]} '
+            f'ke sheet "{sheet_name}".',
+            'success'
+        )
+
+    except Exception as e:
+        flash(f'❌ Gagal upload: {e}', 'error')
+
+    return redirect(url_for('kpi_detail', kpi_type=kpi_type))
+
+
 @flask_app.route('/recap')
 @login_required
 def recap():

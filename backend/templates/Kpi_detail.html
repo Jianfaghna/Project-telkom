@@ -1,0 +1,494 @@
+{% extends 'base.html' %}
+{% block title %}{{ info.label }} - KPI IndiHome - FilterIN{% endblock %}
+
+{% block head_extra %}
+<style>
+.kpi-detail-wrap { padding: 20px 24px; }
+
+/* Header */
+.kpi-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.kpi-detail-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    color: #fff;
+    flex-shrink: 0;
+}
+.kpi-detail-title { flex: 1; }
+.kpi-detail-title h1 { margin: 0; font-size: 20px; color: var(--text, #1e293b); }
+.kpi-detail-title p  { margin: 3px 0 0; font-size: 13px; color: var(--text-muted, #64748b); }
+
+/* Last upload info bar */
+.kpi-last-bar {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+.kpi-last-bar i { color: #3b82f6; font-size: 16px; }
+.kpi-last-bar .lbl { color: var(--text-muted, #64748b); }
+.kpi-last-bar .val { font-weight: 700; color: var(--text, #1e293b); }
+.kpi-last-bar .never { font-style: italic; color: var(--text-muted, #94a3b8); }
+.kpi-status-badge {
+    margin-left: auto;
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.badge-uploaded { background: #dcfce7; color: #16a34a; }
+.badge-empty    { background: #fef3c7; color: #92400e; }
+
+/* Upload card */
+.kpi-upload-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.kpi-upload-card h2 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text, #1e293b);
+    margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.kpi-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* File input */
+.kpi-file-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border: 2px dashed var(--border, #cbd5e1);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted, #64748b);
+    background: var(--surface-2, #f8fafc);
+    transition: border-color 0.2s, background 0.2s;
+}
+.kpi-file-label:hover {
+    border-color: #3b82f6;
+    color: #2563eb;
+    background: #eff6ff;
+}
+.kpi-file-label.has-file {
+    border-color: #22c55e;
+    color: #16a34a;
+    background: #f0fdf4;
+}
+.kpi-filename {
+    font-size: 13px;
+    color: var(--text, #334155);
+    font-weight: 500;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.kpi-filename.empty { color: var(--text-muted, #94a3b8); font-style: italic; }
+
+.kpi-upload-btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.2s, transform 0.1s;
+}
+.kpi-upload-btn:hover   { opacity: 0.88; transform: translateY(-1px); }
+.kpi-upload-btn:active  { transform: translateY(0); }
+.kpi-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.kpi-upload-btn .btn-spinner {
+    display: none;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+.kpi-upload-btn.loading .btn-spinner { display: inline-block; }
+.kpi-upload-btn.loading .btn-icon    { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Error */
+.kpi-upload-error {
+    display: none;
+    margin-top: 10px;
+    padding: 8px 14px;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    color: #dc2626;
+    font-size: 13px;
+    font-weight: 500;
+    align-items: center;
+    gap: 8px;
+}
+.kpi-upload-error.show { display: flex; }
+
+/* Warning replace */
+.kpi-replace-warn {
+    margin-top: 10px;
+    padding: 8px 14px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 6px;
+    color: #92400e;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Tabel */
+.kpi-table-section { margin-top: 4px; }
+.kpi-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.kpi-table-header h2 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text, #1e293b);
+    margin: 0;
+}
+.kpi-row-count {
+    font-size: 13px;
+    color: var(--text-muted, #64748b);
+    background: var(--surface-2, #f1f5f9);
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.kpi-table-wrapper {
+    max-height: 65vh;
+    overflow: auto;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+.kpi-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.kpi-table th {
+    background: #0b3d91;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+.kpi-table th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: #0a2d6e;
+    min-width: 46px;
+}
+.kpi-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border, #f1f5f9);
+    color: var(--text, #334155);
+    vertical-align: middle;
+}
+.kpi-table td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--surface, #fff);
+    font-weight: 700;
+    color: #0b3d91;
+    text-align: center;
+    border-right: 2px solid var(--border, #dce0e6);
+    z-index: 3;
+}
+.kpi-table tbody tr:nth-child(even) td { background: var(--surface-2, #fafbfc); }
+.kpi-table tbody tr:nth-child(even) td:first-child { background: var(--surface-2, #f1f4f9); }
+.kpi-table tbody tr:hover td { background: #e3f2fd !important; color: #0277bd !important; }
+.kpi-table tbody tr:hover td:first-child { background: #bbdefb !important; }
+
+/* Kolom f_tti / f_ffg / f_ttr — highlight */
+.kpi-badge-comp   { background: #dcfce7; color: #16a34a; padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 10px; }
+.kpi-badge-nc     { background: #fef2f2; color: #dc2626; padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 10px; }
+
+/* Dark mode */
+[data-theme="dark"] .kpi-upload-card  { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .kpi-last-bar     { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .kpi-file-label   { background: var(--surface-2); border-color: var(--border); color: var(--text-muted); }
+[data-theme="dark"] .kpi-file-label:hover { background: #1e3a5f; border-color: #3b82f6; color: #60a5fa; }
+[data-theme="dark"] .kpi-file-label.has-file { background: #14532d; border-color: #22c55e; color: #4ade80; }
+[data-theme="dark"] .kpi-table-wrapper { border-color: var(--border); }
+[data-theme="dark"] .kpi-table th     { background: #0b3d91; }
+[data-theme="dark"] .kpi-table th:first-child { background: #0a2d6e; }
+[data-theme="dark"] .kpi-table td     { background: var(--surface); color: var(--text); border-color: var(--border); }
+[data-theme="dark"] .kpi-table td:first-child { background: #1e2d3d !important; color: #60a5fa; }
+[data-theme="dark"] .kpi-table tbody tr:nth-child(even) td { background: var(--surface-2) !important; }
+[data-theme="dark"] .kpi-table tbody tr:hover td { background: #22304a !important; color: #93c5fd !important; }
+[data-theme="dark"] .kpi-replace-warn { background: #422006; border-color: #d97706; color: #fde68a; }
+[data-theme="dark"] .kpi-upload-error { background: #3b1111; border-color: #b91c1c; color: #fca5a5; }
+[data-theme="dark"] .badge-uploaded { background: #14532d; color: #86efac; }
+[data-theme="dark"] .badge-empty    { background: #422006; color: #fde68a; }
+[data-theme="dark"] .kpi-row-count  { background: var(--surface-2); color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kpi-detail-wrap">
+
+    <!-- Breadcrumb + header -->
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+        <a href="{{ url_for('kpi_index') }}" style="color:#2563eb; text-decoration:none;">
+            <i class="fa-solid fa-database"></i> Data KPI
+        </a>
+        <span style="margin:0 6px;">›</span>
+        <span>{{ info.label }}</span>
+    </div>
+
+    <div class="kpi-detail-header">
+        <div class="kpi-detail-icon" style="background:{{ info.color }};">
+            <i class="fa-solid {{ info.icon }}"></i>
+        </div>
+        <div class="kpi-detail-title">
+            <h1>{{ info.label }}</h1>
+            <p>Sheet: <strong>{{ info.sheet_upload | replace('_upload','') | upper }}</strong>
+               &nbsp;|&nbsp; Google Sheet KPI IndiHome</p>
+        </div>
+        <a href="{{ url_for('kpi_index') }}" class="toolbar-btn" style="text-decoration:none;">
+            <i class="fa-solid fa-arrow-left"></i> Kembali
+        </a>
+    </div>
+
+    <!-- Info terakhir dikerjakan -->
+    <div class="kpi-last-bar">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        {% if last_upload %}
+            <span class="lbl">Terakhir diupload:</span>
+            <span class="val">{{ last_upload.nama }} (@{{ last_upload.username }})</span>
+            <span class="lbl">pada</span>
+            <span class="val">{{ last_upload.timestamp }}</span>
+            <span class="kpi-status-badge badge-uploaded">
+                <i class="fa-solid fa-check"></i> Sudah Dikerjakan
+            </span>
+        {% else %}
+            <span class="never">Belum pernah diupload — silakan upload file Excel di bawah.</span>
+            <span class="kpi-status-badge badge-empty">
+                <i class="fa-solid fa-clock"></i> Belum Dikerjakan
+            </span>
+        {% endif %}
+    </div>
+
+    <!-- Upload form -->
+    <div class="kpi-upload-card">
+        <h2>
+            <i class="fa-solid fa-cloud-upload-alt" style="color:{{ info.color }};"></i>
+            Upload Data {{ info.label }}
+        </h2>
+
+        <form action="{{ url_for('kpi_upload', kpi_type=kpi_type) }}"
+              method="POST" enctype="multipart/form-data" id="kpi-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="kpi-upload-row">
+                <label for="kpi-file" class="kpi-file-label" id="kpi-file-label">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span id="kpi-file-text">Pilih File Excel (.xlsx / .xls)</span>
+                </label>
+                <input type="file" id="kpi-file" name="file"
+                       accept=".xlsx,.xls" style="display:none;"
+                       onchange="onFileChange(this)">
+
+                <span class="kpi-filename empty" id="kpi-filename">Belum ada file dipilih</span>
+
+                <button type="submit" class="kpi-upload-btn" id="kpi-upload-btn"
+                        style="background:{{ info.color }};">
+                    <span class="btn-spinner"></span>
+                    <i class="fa-solid fa-upload btn-icon"></i>
+                    Upload & Update Sheet
+                </button>
+            </div>
+
+            <div class="kpi-replace-warn">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Data lama di sheet <strong>"{{ SHEET_NAMES_KPI[kpi_type] }}"</strong>
+                akan <strong>dihapus semua</strong> dan diganti dengan data dari file baru.</span>
+            </div>
+
+            <div class="kpi-upload-error" id="kpi-error">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span id="kpi-error-text"></span>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tabel data -->
+    <div class="kpi-table-section">
+        <div class="kpi-table-header">
+            <h2><i class="fa-solid fa-table" style="color:#0b3d91;"></i>
+                Data di Sheet "{{ SHEET_NAMES_KPI[kpi_type] }}"
+            </h2>
+            {% if total_rows > 0 %}
+                <span class="kpi-row-count">
+                    <i class="fa-solid fa-database"></i> {{ total_rows }} baris data
+                </span>
+            {% endif %}
+        </div>
+
+        {% if error %}
+            <div style="padding:14px; background:#fee2e2; color:#991b1b; border-radius:8px; border:1px solid #fca5a5;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                Gagal memuat data: {{ error }}
+            </div>
+        {% elif data %}
+            <div class="kpi-table-wrapper">
+                <table class="kpi-table">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            {% for h in header %}
+                                <th>{{ h }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in data %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            {% for i, cell in enumerate(row) %}
+                                <td>
+                                    {# Highlight kolom f_tti / f_ffg / f_ttr (kolom terakhir) #}
+                                    {% if i == row|length - 1 and cell %}
+                                        {% if 'COMP' in cell|string|upper %}
+                                            <span class="kpi-badge-comp">{{ cell }}</span>
+                                        {% elif 'NC' in cell|string|upper or 'NOT' in cell|string|upper %}
+                                            <span class="kpi-badge-nc">{{ cell }}</span>
+                                        {% else %}
+                                            {{ cell }}
+                                        {% endif %}
+                                    {% else %}
+                                        {{ cell }}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div style="text-align:center; padding:50px; background:var(--surface,#fff);
+                        border-radius:10px; border:1px solid var(--border,#e2e8f0);">
+                <i class="fa-solid fa-inbox" style="font-size:48px; color:#cbd5e1; display:block; margin-bottom:14px;"></i>
+                <p style="font-size:16px; color:var(--text-muted,#64748b); margin:0;">
+                    Sheet masih kosong. Upload file Excel untuk mengisi data.
+                </p>
+            </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+function onFileChange(input) {
+    const label    = document.getElementById('kpi-file-label');
+    const fname    = document.getElementById('kpi-filename');
+    const errEl    = document.getElementById('kpi-error');
+    const errText  = document.getElementById('kpi-error-text');
+    errEl.classList.remove('show');
+
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    const ext  = file.name.split('.').pop().toLowerCase();
+
+    if (!['xlsx','xls'].includes(ext)) {
+        errText.textContent = 'Format tidak valid! Gunakan file .xlsx atau .xls';
+        errEl.classList.add('show');
+        input.value = '';
+        return;
+    }
+
+    const sizeTxt = file.size >= 1024*1024
+        ? (file.size/(1024*1024)).toFixed(1)+' MB'
+        : (file.size/1024).toFixed(1)+' KB';
+
+    fname.textContent = file.name + ' (' + sizeTxt + ')';
+    fname.classList.remove('empty');
+    label.classList.add('has-file');
+    document.getElementById('kpi-file-text').textContent = 'Ganti File';
+}
+
+document.getElementById('kpi-form').addEventListener('submit', function(e) {
+    const input = document.getElementById('kpi-file');
+    const btn   = document.getElementById('kpi-upload-btn');
+    const err   = document.getElementById('kpi-error');
+    const errT  = document.getElementById('kpi-error-text');
+
+    if (!input.files || input.files.length === 0) {
+        e.preventDefault();
+        errT.textContent = 'Harap pilih file Excel terlebih dahulu.';
+        err.classList.add('show');
+
+        // Shake animation
+        const card = document.querySelector('.kpi-upload-card');
+        card.style.animation = 'none';
+        card.offsetHeight;
+        card.style.animation = 'shake 0.4s ease';
+        return;
+    }
+
+    btn.classList.add('loading');
+    btn.disabled = true;
+});
+
+// Shake CSS
+const s = document.createElement('style');
+s.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}';
+document.head.appendChild(s);
+</script>
+{% endblock %}
