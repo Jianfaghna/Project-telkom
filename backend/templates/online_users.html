@@ -1,0 +1,405 @@
+{% extends 'base.html' %}
+{% block title %}User Online - FilterIN{% endblock %}
+
+{% block head_extra %}
+<style>
+.online-wrap { max-width: 860px; margin: 0 auto; padding: 20px 24px; }
+
+.online-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.online-header h1 {
+    margin: 0;
+    font-size: 22px;
+    color: var(--text, #1e293b);
+}
+.online-header p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: var(--text-muted, #64748b);
+}
+.online-refresh-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    color: var(--text, #333);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s;
+}
+.online-refresh-btn:hover { background: var(--surface-2, #f1f5f9); }
+
+/* Stats bar */
+.online-stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.online-stat {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.online-stat .os-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; color: #fff;
+}
+.online-stat .os-val {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--text, #1e293b);
+}
+.online-stat .os-lbl {
+    font-size: 11px;
+    color: var(--text-muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* User cards grid */
+.online-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.online-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    position: relative;
+    transition: box-shadow 0.2s;
+}
+.online-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.online-card.is-you {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+}
+
+/* Status dot di pojok */
+.card-status-dot {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    animation: pulse-online 2s infinite;
+}
+.dot-active   { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,0.3); }
+.dot-idle     { background: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.3);
+                animation: none; }
+
+.card-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.card-avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+}
+.avatar-admin    { background: linear-gradient(135deg,#dc2626,#ef4444); }
+.avatar-operator { background: linear-gradient(135deg,#2563eb,#3b82f6); }
+.avatar-viewer   { background: linear-gradient(135deg,#059669,#10b981); }
+
+.card-name  { font-weight: 700; font-size: 14px; color: var(--text, #1e293b); }
+.card-uname { font-size: 11px; color: var(--text-muted, #94a3b8); margin-top: 1px; }
+
+.role-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.role-admin    { background:#fef2f2; color:#dc2626; }
+.role-operator { background:#eff6ff; color:#2563eb; }
+.role-viewer   { background:#f0fdf4; color:#16a34a; }
+
+.card-page {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted, #64748b);
+    background: var(--surface-2, #f8fafc);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.card-page i { color: #3b82f6; font-size: 11px; }
+.card-page .page-name {
+    font-weight: 600;
+    color: var(--text, #334155);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.card-time {
+    font-size: 11px;
+    color: var(--text-muted, #94a3b8);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Offline section */
+.offline-section { margin-top: 24px; }
+.offline-section h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted, #94a3b8);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.offline-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+}
+.offline-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0.65;
+}
+.offline-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #94a3b8;
+    flex-shrink: 0;
+}
+.offline-name  { font-size: 13px; font-weight: 600; color: var(--text, #334155); }
+.offline-uname { font-size: 11px; color: var(--text-muted, #94a3b8); }
+.offline-time  { font-size: 10px; color: var(--text-muted, #94a3b8); margin-top: 2px; }
+
+/* Auto refresh countdown */
+.refresh-countdown {
+    font-size: 11px;
+    color: var(--text-muted, #94a3b8);
+    text-align: right;
+    margin-top: 16px;
+}
+
+/* Dark mode */
+[data-theme="dark"] .online-card   { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .online-stat   { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .card-page     { background: var(--surface-2); }
+[data-theme="dark"] .offline-card  { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .role-admin    { background:#3b1111; color:#fca5a5; }
+[data-theme="dark"] .role-operator { background:#1e3a5f; color:#93c5fd; }
+[data-theme="dark"] .role-viewer   { background:#14532d; color:#86efac; }
+[data-theme="dark"] .online-refresh-btn { background: var(--surface); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .online-refresh-btn:hover { background: var(--surface-2); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="online-wrap">
+
+    <div class="online-header">
+        <div>
+            <h1><i class="fa-solid fa-users" style="color:#22c55e;"></i> User Online</h1>
+            <p>Daftar user yang sedang aktif menggunakan FilterIN saat ini.</p>
+        </div>
+        <button class="online-refresh-btn" onclick="location.reload()">
+            <i class="fa-solid fa-rotate"></i> Refresh
+        </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="online-stats">
+        <div class="online-stat">
+            <div class="os-icon" style="background:#22c55e;">
+                <i class="fa-solid fa-circle-dot"></i>
+            </div>
+            <div>
+                <div class="os-val">{{ online_users|length }}</div>
+                <div class="os-lbl">Sedang Online</div>
+            </div>
+        </div>
+        <div class="online-stat">
+            <div class="os-icon" style="background:#dc2626;">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div>
+                <div class="os-val">
+                    {{ online_users|selectattr('role','equalto','admin')|list|length }}
+                </div>
+                <div class="os-lbl">Admin Online</div>
+            </div>
+        </div>
+        <div class="online-stat">
+            <div class="os-icon" style="background:#2563eb;">
+                <i class="fa-solid fa-user-gear"></i>
+            </div>
+            <div>
+                <div class="os-val">
+                    {{ online_users|selectattr('role','equalto','operator')|list|length }}
+                </div>
+                <div class="os-lbl">Operator Online</div>
+            </div>
+        </div>
+        <div class="online-stat">
+            <div class="os-icon" style="background:#64748b;">
+                <i class="fa-solid fa-users"></i>
+            </div>
+            <div>
+                <div class="os-val">{{ all_users|length }}</div>
+                <div class="os-lbl">Total User Terdaftar</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Online users grid -->
+    {% if online_users %}
+    <div class="online-grid" id="online-grid">
+        {% for u in online_users %}
+        {% set is_you = (u.username == current_user.username) %}
+        <div class="online-card {% if is_you %}is-you{% endif %}">
+
+            <!-- Status dot -->
+            <span class="card-status-dot
+                {% if u.seconds_ago < 60 %}dot-active{% else %}dot-idle{% endif %}">
+            </span>
+
+            <div class="card-top">
+                <div class="card-avatar avatar-{{ u.role or 'operator' }}">
+                    {{ (u.nama or u.username)[0]|upper }}
+                </div>
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <div class="card-name" style="margin:0;">{{ u.nama }}</div>
+                        {% if is_you %}
+                            <span style="background:#3b82f6; color:#fff; font-size:9px;
+                                         font-weight:700; padding:1px 7px; border-radius:999px;
+                                         flex-shrink:0; line-height:1.6;">Anda</span>
+                        {% endif %}
+                    </div>
+                    <div class="card-uname">@{{ u.username }}</div>
+                </div>
+            </div>
+
+            <span class="role-badge role-{{ u.role or 'operator' }}">
+                {% if u.role == 'admin' %}<i class="fa-solid fa-shield-halved"></i>{% endif %}
+                {% if u.role == 'operator' %}<i class="fa-solid fa-user-gear"></i>{% endif %}
+                {% if u.role == 'viewer' %}<i class="fa-solid fa-eye"></i>{% endif %}
+                {{ u.role or 'operator' }}
+            </span>
+
+            <div class="card-page">
+                <i class="fa-solid fa-location-dot"></i>
+                <span class="page-name">
+                    {% set pg = u.current_page or 'Dashboard' %}
+                    {% if pg == 'User Online' %}Menjelajahi FilterIN{% else %}{{ pg }}{% endif %}
+                </span>
+            </div>
+
+            <div class="card-time">
+                <i class="fa-solid fa-clock"></i>
+                {% if u.seconds_ago < 60 %}
+                    Aktif baru saja
+                {% elif u.seconds_ago < 120 %}
+                    Aktif ~1 menit lalu
+                {% else %}
+                    Aktif ~{{ (u.seconds_ago // 60)|int }} menit lalu
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:40px; background:var(--surface,#fff);
+                border-radius:10px; border:1px solid var(--border,#e2e8f0);">
+        <i class="fa-solid fa-users-slash" style="font-size:48px; color:#cbd5e1; display:block; margin-bottom:14px;"></i>
+        <p style="color:var(--text-muted,#64748b);">Tidak ada user lain yang online saat ini.</p>
+    </div>
+    {% endif %}
+
+    <!-- Offline users -->
+    {% set offline = all_users|rejectattr('username', 'in', online_users|map(attribute='username')|list)|list %}
+    {% if offline %}
+    <div class="offline-section">
+        <h2>
+            <span class="offline-dot" style="width:10px;height:10px;display:inline-block;border-radius:50%;background:#94a3b8;"></span>
+            Offline ({{ offline|length }})
+        </h2>
+        <div class="offline-grid">
+            {% for u in offline %}
+            <div class="offline-card">
+                <div class="offline-dot"></div>
+                <div>
+                    <div class="offline-name">{{ u.nama }}</div>
+                    <div class="offline-uname">@{{ u.username }}
+                        &nbsp;·&nbsp;
+                        <span style="text-transform:uppercase; font-size:10px; font-weight:700;
+                                     color:{% if u.role=='admin' %}#dc2626{% elif u.role=='operator' %}#2563eb{% else %}#16a34a{% endif %};">
+                            {{ u.role or 'operator' }}
+                        </span>
+                    </div>
+                    {% if u.last_login %}
+                    <div class="offline-time">
+                        <i class="fa-solid fa-clock"></i>
+                        Login terakhir: {{ u.last_login.strftime('%d/%m/%Y %H:%M') }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="refresh-countdown">
+        <i class="fa-solid fa-rotate"></i>
+        Auto-refresh dalam <span id="countdown">15</span> detik
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+// Auto refresh setiap 15 detik
+var count = 15;
+var cd = document.getElementById('countdown');
+setInterval(function() {
+    count--;
+    if (cd) cd.textContent = count;
+    if (count <= 0) location.reload();
+}, 1000);
+</script>
+{% endblock %}

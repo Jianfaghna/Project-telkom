@@ -12,6 +12,29 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='filterin-modern.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='kendalamaster.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+    /* ── Online indicator di sidebar ── */
+    .online-dot-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px; height: 20px;
+        flex-shrink: 0;
+    }
+    .online-dot {
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        background: #22c55e;
+        box-shadow: 0 0 0 2px rgba(34,197,94,0.3);
+        animation: pulse-online 2s infinite;
+        display: inline-block;
+    }
+    @keyframes pulse-online {
+        0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+        70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+        100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    </style>
 
     {% block head_extra %}{% endblock %}
 </head>
@@ -56,17 +79,7 @@
                     </ul>
                 </li>
 
-                <li class="item">
-                    <div class="submenu-item" data-testid="nav-program">
-                        <i class="fa-solid fa-cogs"></i><span>PROGRAM</span>
-                        <i class="fa-solid fa-chevron-right ms-auto"></i>
-                    </div>
-                    <ul class="submenu">
-                        <li><a href="#">IMPLEMENTASI DC REFURBISH</a></li>
-                        <li><a href="#">IMPLEMENTASI PASSIVE 1:2</a></li>
-                    </ul>
-                </li>
-
+                
                 <li class="item">
                     <div class="submenu-item" data-testid="nav-kpi">
                         <i class="fa-solid fa-database"></i><span>DATA KPI</span>
@@ -128,13 +141,28 @@
                 </li>
                 {% endif %}
             </ul>
-
+                
             <ul class="menu-items user-menu">
+                <!-- Online indicator -->
+                <li class="item">
+                    <a href="{{ url_for('online_users') }}" id="online-indicator"
+                       data-testid="nav-online" title="Lihat user yang sedang online">
+                        <span class="online-dot-wrap">
+                            <span class="online-dot" id="online-dot"></span>
+                        </span>
+                        <span id="online-label">
+                            <span id="online-count">—</span> online
+                        </span>
+                    </a>
+                </li>
+
                 <li class="item">
                     <a href="#" id="theme-toggle-btn" data-testid="theme-toggle-btn">
                         <i class="fa-solid fa-moon" id="theme-icon"></i><span id="theme-label">Dark Mode</span>
                     </a>
                 </li>
+
+               
                 <li class="item"><a href="{{ url_for('ganti_password') }}" data-testid="nav-ganti-password"><i class="fa-solid fa-key"></i><span>Ganti Password</span></a></li>
                 <li class="item"><a href="{{ url_for('logout') }}" data-testid="nav-logout"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></a></li>
             </ul>
@@ -192,6 +220,28 @@
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script src="{{ url_for('static', filename='filterin-core.js') }}"></script>
+
+    <script>
+    (function() {
+        function sendHeartbeat() {
+            fetch('/heartbeat', { method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(function() {});
+        }
+        function updateOnlineCount() {
+            fetch('/api/online_count')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var el = document.getElementById('online-count');
+                    if (el) el.textContent = d.count || 0;
+                }).catch(function() {});
+        }
+        sendHeartbeat();
+        updateOnlineCount();
+        setInterval(sendHeartbeat,      30000);
+        setInterval(updateOnlineCount,  15000);
+    })();
+    </script>
 
     {% block scripts_extra %}{% endblock %}
 </body>

@@ -1691,6 +1691,149 @@ def hapus_kolom():
 # =====================================================================
 # ROUTES - ADMIN USER MANAGEMENT
 # =====================================================================
+# ROUTES - USER ONLINE (heartbeat + halaman online)
+# =====================================================================
+
+# Mapping path → nama halaman yang tampil
+PAGE_NAMES = {
+    '/dashboard':          'Dashboard',
+    '/kendala_master':     'DB Kendala Master',
+    '/unsc':               'Sheet UNSC',
+    '/upload':             'Upload Data',
+    '/recap':              'Recap Report',
+    '/kpi':                'Data KPI',
+    '/kpi/tti':            'KPI — TTI',
+    '/kpi/ffg':            'KPI — FFG',
+    '/kpi/ttr':            'KPI — TTR FFG',
+    '/audit_log':          'Audit Log',
+    '/admin/users':        'Manajemen User',
+    '/online':             'User Online',
+    '/ganti_password':     'Ganti Password',
+    '/verifikasi_odp_full':'Verifikasi ODP Full',
+    '/tabel':              'Tabel Data',
+}
+
+def _page_name(path):
+    """Konversi path URL ke nama halaman yang mudah dibaca."""
+    for key, name in PAGE_NAMES.items():
+        if path.startswith(key):
+            return name
+    return path or 'FilterIN'
+
+
+@flask_app.route('/heartbeat', methods=['POST'])
+@api_login_required
+def heartbeat():
+    """Terima sinyal heartbeat dari browser user — update status online."""
+    user     = session.get('user', {})
+    username = user.get('username', '')
+    if not username:
+        return jsonify({'ok': False}), 401
+
+    # Ambil halaman yang sedang dibuka dari Referer header
+    referer  = request.headers.get('Referer', '')
+    try:
+        from urllib.parse import urlparse
+        path = urlparse(referer).path
+    except Exception:
+        path = '/dashboard'
+
+    page_name = _page_name(path)
+
+    try:
+        with db_cursor() as (conn, cur):
+            # Upsert ke tabel user_sessions
+            cur.execute("""
+                INSERT INTO user_sessions (username, current_page, last_seen)
+                VALUES (%s, %s, NOW())
+                ON DUPLICATE KEY UPDATE
+                    current_page = VALUES(current_page),
+                    last_seen    = NOW()
+            """, (username, page_name))
+        return jsonify({'ok': True})
+    except Exception as e:
+        # Kalau tabel belum ada, buat dulu
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_sessions (
+                        username     VARCHAR(50)  NOT NULL PRIMARY KEY,
+                        current_page VARCHAR(100) DEFAULT 'Dashboard',
+                        last_seen    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+                            ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_last_seen (last_seen)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """)
+                cur.execute("""
+                    INSERT INTO user_sessions (username, current_page, last_seen)
+                    VALUES (%s, %s, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        current_page = VALUES(current_page),
+                        last_seen    = NOW()
+                """, (username, page_name))
+            return jsonify({'ok': True})
+        except Exception as e2:
+            return jsonify({'ok': False, 'error': str(e2)}), 500
+
+
+@flask_app.route('/api/online_count')
+@api_login_required
+def api_online_count():
+    """Jumlah user yang aktif dalam 2 menit terakhir."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                SELECT COUNT(*) AS c FROM user_sessions
+                WHERE last_seen >= NOW() - INTERVAL 2 MINUTE
+            """)
+            row = cur.fetchone()
+            return jsonify({'count': row['c'] if row else 0})
+    except Exception:
+        return jsonify({'count': 0})
+
+
+@flask_app.route('/online')
+@login_required
+def online_users():
+    """Halaman daftar user yang sedang online."""
+    current_user = session['user']
+    online, all_users_list = [], []
+
+    try:
+        with db_cursor() as (conn, cur):
+            # User online: heartbeat dalam 2 menit terakhir
+            cur.execute("""
+                SELECT
+                    s.username,
+                    COALESCE(u.nama, s.username) AS nama,
+                    u.role,
+                    u.last_login,
+                    s.current_page,
+                    TIMESTAMPDIFF(SECOND, s.last_seen, NOW()) AS seconds_ago
+                FROM user_sessions s
+                LEFT JOIN users u ON u.username = s.username
+                WHERE s.last_seen >= NOW() - INTERVAL 2 MINUTE
+                ORDER BY seconds_ago ASC
+            """)
+            online = cur.fetchall()
+
+            # Semua user terdaftar
+            cur.execute(
+                "SELECT id, nama, username, role, last_login FROM users ORDER BY role, nama"
+            )
+            all_users_list = cur.fetchall()
+
+    except Exception as e:
+        flash(f'Gagal ambil data online: {e}', 'error')
+
+    return render_template('online_users.html',
+        online_users = online,
+        all_users    = all_users_list,
+        current_user = current_user,
+    )
+
+
+# =====================================================================
 
 @flask_app.route('/admin/users')
 @login_required
