@@ -34,6 +34,25 @@
         70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
         100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
     }
+
+    /* Saat sidebar collapsed — sembunyikan dot+teks, tampilkan ikon FA */
+    .sidebar.collapsed .online-dot-wrap { display: none !important; }
+    .sidebar.collapsed #online-label    { display: none !important; }
+    .sidebar.collapsed .online-icon-collapsed { display: inline-block !important; }
+    /* Dot kecil di pojok ikon saat collapsed */
+    .sidebar.collapsed #online-indicator {
+        position: relative;
+    }
+    .sidebar.collapsed #online-indicator::after {
+        content: '';
+        position: absolute;
+        top: 6px; right: 8px;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        border: 2px solid var(--sidebar-bg, #1e2d3d);
+        animation: pulse-online 2s infinite;
+    }
     </style>
 
     {% block head_extra %}{% endblock %}
@@ -79,7 +98,17 @@
                     </ul>
                 </li>
 
-                
+                <li class="item">
+                    <div class="submenu-item" data-testid="nav-program">
+                        <i class="fa-solid fa-cogs"></i><span>PROGRAM</span>
+                        <i class="fa-solid fa-chevron-right ms-auto"></i>
+                    </div>
+                    <ul class="submenu">
+                        <li><a href="#">IMPLEMENTASI DC REFURBISH</a></li>
+                        <li><a href="#">IMPLEMENTASI PASSIVE 1:2</a></li>
+                    </ul>
+                </li>
+
                 <li class="item">
                     <div class="submenu-item" data-testid="nav-kpi">
                         <i class="fa-solid fa-database"></i><span>DATA KPI</span>
@@ -141,8 +170,9 @@
                 </li>
                 {% endif %}
             </ul>
-                
+
             <ul class="menu-items user-menu">
+
                 <!-- Online indicator -->
                 <li class="item">
                     <a href="{{ url_for('online_users') }}" id="online-indicator"
@@ -150,6 +180,8 @@
                         <span class="online-dot-wrap">
                             <span class="online-dot" id="online-dot"></span>
                         </span>
+                        <i class="fa-solid fa-users online-icon-collapsed"
+                           style="display:none; font-size:16px;"></i>
                         <span id="online-label">
                             <span id="online-count">—</span> online
                         </span>
@@ -161,8 +193,7 @@
                         <i class="fa-solid fa-moon" id="theme-icon"></i><span id="theme-label">Dark Mode</span>
                     </a>
                 </li>
-
-               
+                
                 <li class="item"><a href="{{ url_for('ganti_password') }}" data-testid="nav-ganti-password"><i class="fa-solid fa-key"></i><span>Ganti Password</span></a></li>
                 <li class="item"><a href="{{ url_for('logout') }}" data-testid="nav-logout"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></a></li>
             </ul>
