@@ -29,6 +29,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+import atexit
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -111,6 +114,25 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
+# Jalankan background scheduler setelah app siap
+import threading as _threading
+def _deferred_start():
+    import time as _time
+    # Tunggu sampai MySQL siap (max 30 detik)
+    for i in range(10):
+        try:
+            with flask_app.app_context():
+                with db_cursor() as (conn, cur):
+                    cur.execute("SELECT 1")
+            break  # MySQL siap
+        except Exception:
+            _time.sleep(3)
+    # Mulai scheduler
+    with flask_app.app_context():
+        _start_scheduler()
+
+_threading.Thread(target=_deferred_start, daemon=True).start()
+
 # =====================================================================
 # DATABASE
 # =====================================================================
@@ -133,6 +155,7 @@ _gs_client = None
 _sheet_cache = {}   # key: (spreadsheet_key, sheet_name) -> {'ts':..., 'data':...}
 
 def gs_client():
+    """Lazy-init Google Sheets client."""
     global _gs_client
     if _gs_client is None:
         creds_path = ROOT_DIR / os.environ.get('GOOGLE_CREDS_PATH', 'credentials.json')
@@ -143,31 +166,210 @@ def gs_client():
         _gs_client = gspread.authorize(creds)
     return _gs_client
 
+# =====================================================================
+# MYSQL-BACKED PERSISTENT CACHE
+# =====================================================================
+
+# Sheet yang di-pre-fetch oleh background job
+PREFETCH_SHEETS = [
+    ('kendala', 'kendalamaster'),
+    ('kendala', 'unsc'),
+]
+
+def _ensure_cache_table():
+    """Buat tabel sheet_cache di MySQL kalau belum ada — dengan retry."""
+    for attempt in range(5):
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS sheet_cache (
+                        cache_key    VARCHAR(255) NOT NULL PRIMARY KEY,
+                        data_json    LONGTEXT     NOT NULL,
+                        fetched_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                     ON UPDATE CURRENT_TIMESTAMP,
+                        row_count    INT          DEFAULT 0,
+                        INDEX idx_fetched (fetched_at)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """)
+            print('[CACHE] Tabel sheet_cache siap.')
+            return True
+        except Exception as e:
+            wait = (attempt + 1) * 3
+            print(f'[CACHE] Gagal buat tabel (attempt {attempt+1}/5): {e} — retry {wait}s')
+            time.sleep(wait)
+    print('[CACHE] Gagal buat tabel sheet_cache setelah 5 percobaan.')
+    return False
+
+
+def _cache_key(spreadsheet_key, sheet_name):
+    raw = f'{spreadsheet_key}::{sheet_name}'
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _read_mysql_cache(spreadsheet_key, sheet_name, max_age_seconds=300):
+    """Baca cache dari MySQL. Return data atau None kalau expired/tidak ada."""
+    key = _cache_key(spreadsheet_key, sheet_name)
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                SELECT data_json, fetched_at,
+                       TIMESTAMPDIFF(SECOND, fetched_at, NOW()) AS age_seconds
+                FROM sheet_cache
+                WHERE cache_key = %s
+            """, (key,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            if row['age_seconds'] > max_age_seconds:
+                return None
+            return json.loads(row['data_json'])
+    except Exception:
+        return None
+
+
+def _write_mysql_cache(spreadsheet_key, sheet_name, data):
+    """Tulis data ke MySQL cache."""
+    key = _cache_key(spreadsheet_key, sheet_name)
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                INSERT INTO sheet_cache (cache_key, data_json, row_count)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    data_json  = VALUES(data_json),
+                    row_count  = VALUES(row_count),
+                    fetched_at = NOW()
+            """, (key, json.dumps(data, ensure_ascii=False), len(data)))
+    except Exception as e:
+        print(f'[CACHE] Gagal tulis cache: {e}')
+
+
 def get_sheet_values(spreadsheet_key, sheet_name, force_refresh=False):
-    """Cached fetch of all values from a sheet."""
+    """
+    Cached fetch — urutan prioritas:
+    1. Memory cache (sangat cepat, TTL 30 detik)
+    2. MySQL cache (cepat, TTL 5 menit)
+    3. Google Sheets API (lambat, hanya kalau cache expired)
+    """
     key = (spreadsheet_key, sheet_name)
     now = time.time()
-    cached = _sheet_cache.get(key)
-    if cached and not force_refresh and (now - cached['ts'] < SHEET_CACHE_TTL):
-        return cached['data']
-    ws = gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
-    values = ws.get_all_values()
-    _sheet_cache[key] = {'ts': now, 'data': values}
-    return values
+
+    # Level 1: Memory cache (30 detik)
+    if not force_refresh:
+        cached = _sheet_cache.get(key)
+        if cached and (now - cached['ts'] < 30):
+            return cached['data']
+
+    # Level 2: MySQL cache (5 menit)
+    if not force_refresh:
+        mysql_data = _read_mysql_cache(spreadsheet_key, sheet_name, max_age_seconds=300)
+        if mysql_data is not None:
+            # Simpan juga ke memory cache
+            _sheet_cache[key] = {'ts': now, 'data': mysql_data}
+            return mysql_data
+
+    # Level 3: Fetch dari Google Sheets
+    try:
+        ws     = gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
+        values = ws.get_all_values()
+        # Simpan ke memory dan MySQL
+        _sheet_cache[key] = {'ts': now, 'data': values}
+        _write_mysql_cache(spreadsheet_key, sheet_name, values)
+        return values
+    except Exception as e:
+        # Kalau fetch gagal, coba pakai cache lama meski expired
+        stale = _sheet_cache.get(key)
+        if stale:
+            print(f'[CACHE] Fetch gagal ({e}), pakai stale cache untuk {sheet_name}')
+            return stale['data']
+        stale_mysql = _read_mysql_cache(spreadsheet_key, sheet_name, max_age_seconds=86400)
+        if stale_mysql:
+            print(f'[CACHE] Fetch gagal ({e}), pakai stale MySQL cache untuk {sheet_name}')
+            return stale_mysql
+        raise
+
 
 def invalidate_sheet_cache(spreadsheet_key=None, sheet_name=None):
     global _sheet_cache
     if spreadsheet_key is None:
         _sheet_cache.clear()
+        # Hapus semua MySQL cache juga
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute("DELETE FROM sheet_cache")
+        except Exception:
+            pass
         return
     key = (spreadsheet_key, sheet_name)
     _sheet_cache.pop(key, None)
+    # Hapus dari MySQL cache
+    try:
+        cache_key = _cache_key(spreadsheet_key, sheet_name)
+        with db_cursor() as (conn, cur):
+            cur.execute("DELETE FROM sheet_cache WHERE cache_key = %s", (cache_key,))
+    except Exception:
+        pass
+
 
 def get_worksheet(spreadsheet_key, sheet_name):
     return gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
 
+
 # =====================================================================
-# HELPERS
+# BACKGROUND PRE-FETCH SCHEDULER
+# =====================================================================
+
+def _prefetch_job():
+    """
+    Background job — fetch sheet yang paling sering diakses
+    dan simpan ke MySQL cache. Jalan tiap 5 menit.
+    """
+    print(f'[PREFETCH] Mulai pre-fetch {len(PREFETCH_SHEETS)} sheets...')
+    success = 0
+    for sp_key, sh_key in PREFETCH_SHEETS:
+        try:
+            sp_id   = SPREADSHEET_IDS.get(sp_key)
+            sh_name = SHEET_NAMES.get(sp_key, {}).get(sh_key)
+            if not sp_id or not sh_name:
+                continue
+            ws     = gs_client().open_by_key(sp_id).worksheet(sh_name)
+            values = ws.get_all_values()
+            _write_mysql_cache(sp_id, sh_name, values)
+            # Update memory cache juga
+            _sheet_cache[(sp_id, sh_name)] = {'ts': time.time(), 'data': values}
+            success += 1
+            print(f'[PREFETCH] ✅ {sh_name} — {len(values)} baris')
+        except Exception as e:
+            print(f'[PREFETCH] ❌ {sh_key}: {e}')
+    print(f'[PREFETCH] Selesai — {success}/{len(PREFETCH_SHEETS)} berhasil')
+
+
+def _start_scheduler():
+    """Mulai background scheduler saat Flask start."""
+    try:
+        _ensure_cache_table()
+
+        # Fetch pertama kali langsung saat start (non-blocking di thread terpisah)
+        import threading
+        t = threading.Thread(target=_prefetch_job, daemon=True)
+        t.start()
+
+        # Jadwalkan ulang setiap 5 menit
+        scheduler = BackgroundScheduler(timezone='Asia/Jakarta')
+        scheduler.add_job(
+            func    = _prefetch_job,
+            trigger = IntervalTrigger(minutes=5),
+            id      = 'prefetch_sheets',
+            name    = 'Pre-fetch Google Sheets ke MySQL cache',
+            replace_existing = True,
+        )
+        scheduler.start()
+        atexit.register(lambda: scheduler.shutdown(wait=False))
+        print('[SCHEDULER] Background pre-fetch dimulai (interval: 5 menit)')
+    except Exception as e:
+        print(f'[SCHEDULER] Gagal start: {e}')
+
+
 # =====================================================================
 def prepare_dataframe_for_sheets(df):
     for col in df.select_dtypes(include=['datetime64[ns]']).columns:
@@ -1719,6 +1921,67 @@ def _page_name(path):
         if path.startswith(key):
             return name
     return path or 'FilterIN'
+
+
+# =====================================================================
+# ROUTES - CACHE MANAGEMENT
+# =====================================================================
+
+@flask_app.route('/api/cache_status')
+@api_login_required
+def api_cache_status():
+    """Status cache — berapa sheet yang di-cache dan kapan terakhir fetch."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                SELECT
+                    cache_key,
+                    row_count,
+                    fetched_at,
+                    TIMESTAMPDIFF(SECOND, fetched_at, NOW()) AS age_seconds
+                FROM sheet_cache
+                ORDER BY fetched_at DESC
+            """)
+            rows = cur.fetchall()
+
+        # Map cache_key ke nama sheet yang mudah dibaca
+        sheet_map = {}
+        for sp_key, sh_key in PREFETCH_SHEETS:
+            sp_id   = SPREADSHEET_IDS.get(sp_key)
+            sh_name = SHEET_NAMES.get(sp_key, {}).get(sh_key)
+            if sp_id and sh_name:
+                ck = _cache_key(sp_id, sh_name)
+                sheet_map[ck] = sh_name
+
+        result = []
+        for r in rows:
+            result.append({
+                'sheet_name': sheet_map.get(r['cache_key'], r['cache_key'][:8] + '...'),
+                'row_count':  r['row_count'],
+                'fetched_at': r['fetched_at'].strftime('%d/%m/%Y %H:%M:%S') if r['fetched_at'] else '—',
+                'age_seconds': r['age_seconds'],
+                'status': 'fresh' if r['age_seconds'] < 300 else 'stale',
+            })
+        return jsonify({'cache': result, 'total': len(result)})
+    except Exception as e:
+        return jsonify({'cache': [], 'error': str(e)})
+
+
+@flask_app.route('/api/cache_refresh', methods=['POST'])
+@login_required
+@role_required('admin')
+def api_cache_refresh():
+    """Force refresh semua cache — admin only."""
+    try:
+        invalidate_sheet_cache()  # hapus cache lama
+        # Jalankan prefetch job di background thread
+        import threading
+        t = threading.Thread(target=_prefetch_job, daemon=True)
+        t.start()
+        audit('cache_refresh', new_value='manual refresh by admin')
+        return jsonify({'status': 'success', 'message': 'Cache refresh dimulai.'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 
 @flask_app.route('/heartbeat', methods=['POST'])
