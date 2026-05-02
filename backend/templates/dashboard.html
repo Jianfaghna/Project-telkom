@@ -256,6 +256,24 @@
         <p>Pantauan data operasional terkini — Telkom Magelang &nbsp;|&nbsp;
            <i class="fa-solid fa-clock"></i> Update: <strong>{{ last_sync or '-' }}</strong>
         </p>
+        <!-- Cache status + refresh button (admin only) -->
+        {% if user.role == 'admin' %}
+        <div style="margin-top:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span id="cache-status-badge"
+                  style="font-size:11px; padding:3px 10px; border-radius:999px;
+                         background:#f1f5f9; color:#64748b; font-weight:600;">
+                <i class="fa-solid fa-database"></i> Cek cache...
+            </span>
+            <button onclick="forceRefreshCache()" id="btn-refresh-cache"
+                    style="font-size:11px; padding:3px 12px; border-radius:999px;
+                           border:1px solid #cbd5e1; background:#fff; cursor:pointer;
+                           color:#334155; font-weight:600; display:inline-flex;
+                           align-items:center; gap:5px;">
+                <i class="fa-solid fa-rotate"></i> Refresh Cache
+            </button>
+        </div>
+        {% endif %}
+        </p>
     </div>
 
     <!-- Stat cards -->
@@ -519,7 +537,74 @@ document.addEventListener('DOMContentLoaded', function() {
     if (el) el.innerText = h < 11 ? 'Selamat Pagi' : h < 15 ? 'Selamat Siang' : h < 18 ? 'Selamat Sore' : 'Selamat Malam';
 });
 
-// ── Real-time stats polling ──
+// ── Cache status check (admin only) ──
+function checkCacheStatus() {
+    fetch('/api/cache_status')
+        .then(r => r.json())
+        .then(d => {
+            const badge = document.getElementById('cache-status-badge');
+            if (!badge || !d.cache) return;
+            const fresh  = d.cache.filter(c => c.status === 'fresh').length;
+            const total  = d.cache.length;
+            const oldest = d.cache.reduce((max, c) => Math.max(max, c.age_seconds), 0);
+            const minsOld = Math.floor(oldest / 60);
+
+            if (fresh === total && total > 0) {
+                badge.style.background = '#dcfce7';
+                badge.style.color      = '#16a34a';
+                badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> Cache fresh (${total} sheets, ${minsOld}m lalu)`;
+            } else if (total === 0) {
+                badge.style.background = '#fef3c7';
+                badge.style.color      = '#92400e';
+                badge.innerHTML = `<i class="fa-solid fa-clock"></i> Cache belum terisi`;
+            } else {
+                badge.style.background = '#fee2e2';
+                badge.style.color      = '#dc2626';
+                badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Cache stale (${fresh}/${total} fresh)`;
+            }
+        })
+        .catch(() => {});
+}
+
+function forceRefreshCache() {
+    const btn   = document.getElementById('btn-refresh-cache');
+    const badge = document.getElementById('cache-status-badge');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
+    if (badge) {
+        badge.style.background = '#eff6ff';
+        badge.style.color      = '#2563eb';
+        badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sedang refresh...';
+    }
+
+    fetch('/api/cache_refresh', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (window.toast) window.toast(d.message, d.status === 'success' ? 'success' : 'error');
+        // Cek ulang status setelah 8 detik (beri waktu prefetch selesai)
+        setTimeout(() => {
+            checkCacheStatus();
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Refresh Cache';
+        }, 8000);
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Refresh Cache';
+    });
+}
+
+// Cek cache status saat halaman load (admin only)
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('cache-status-badge')) {
+        checkCacheStatus();
+        setInterval(checkCacheStatus, 60000); // update tiap 1 menit
+    }
+});
 function updateStats() {
     fetch('/dashboard_stats')
         .then(r => r.json())
