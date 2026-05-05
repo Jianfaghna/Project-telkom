@@ -256,21 +256,23 @@
         <p>Pantauan data operasional terkini — Telkom Magelang &nbsp;|&nbsp;
            <i class="fa-solid fa-clock"></i> Update: <strong>{{ last_sync or '-' }}</strong>
         </p>
-        <!-- Cache status + refresh button (admin only) -->
-        {% if user.role == 'admin' %}
+        <!-- Cache status + refresh button (admin & operator) -->
+        {% if user.role in ['admin', 'operator'] %}
         <div style="margin-top:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span id="cache-status-badge"
                   style="font-size:11px; padding:3px 10px; border-radius:999px;
                          background:#f1f5f9; color:#64748b; font-weight:600;">
-                <i class="fa-solid fa-database"></i> Cek cache...
+                <i class="fa-solid fa-rotate fa-spin"></i> Memeriksa data...
             </span>
+            {% if user.role == 'admin' %}
             <button onclick="forceRefreshCache()" id="btn-refresh-cache"
                     style="font-size:11px; padding:3px 12px; border-radius:999px;
                            border:1px solid #cbd5e1; background:#fff; cursor:pointer;
                            color:#334155; font-weight:600; display:inline-flex;
                            align-items:center; gap:5px;">
-                <i class="fa-solid fa-rotate"></i> Refresh Cache
+                <i class="fa-solid fa-rotate"></i> Perbarui Data
             </button>
+            {% endif %}
         </div>
         {% endif %}
         </p>
@@ -544,26 +546,49 @@ function checkCacheStatus() {
         .then(d => {
             const badge = document.getElementById('cache-status-badge');
             if (!badge || !d.cache) return;
-            const fresh  = d.cache.filter(c => c.status === 'fresh').length;
-            const total  = d.cache.length;
-            const oldest = d.cache.reduce((max, c) => Math.max(max, c.age_seconds), 0);
-            const minsOld = Math.floor(oldest / 60);
 
-            if (fresh === total && total > 0) {
-                badge.style.background = '#dcfce7';
-                badge.style.color      = '#16a34a';
-                badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> Cache fresh (${total} sheets, ${minsOld}m lalu)`;
-            } else if (total === 0) {
+            const total   = d.cache.length;
+            const fresh   = d.cache.filter(c => c.status === 'fresh').length;
+            const missing = d.cache.filter(c => c.status === 'missing').length;
+
+            // Cari yang paling lama di-update (oldest fresh)
+            const freshItems = d.cache.filter(c => c.status === 'fresh');
+            const oldest     = freshItems.reduce((max, c) => Math.max(max, c.age_seconds), 0);
+            const minsOld    = Math.floor(oldest / 60);
+
+            // Teks waktu yang friendly
+            let waktuTeks = '';
+            if (minsOld === 0)        waktuTeks = 'baru saja';
+            else if (minsOld === 1)   waktuTeks = '1 menit lalu';
+            else if (minsOld < 60)    waktuTeks = minsOld + ' menit lalu';
+            else                      waktuTeks = Math.floor(minsOld/60) + ' jam lalu';
+
+            if (total === 0 || missing === total) {
                 badge.style.background = '#fef3c7';
                 badge.style.color      = '#92400e';
-                badge.innerHTML = `<i class="fa-solid fa-clock"></i> Cache belum terisi`;
+                badge.innerHTML = `<i class="fa-solid fa-clock"></i> Data sedang dimuat...`;
+            } else if (fresh === total) {
+                badge.style.background = '#dcfce7';
+                badge.style.color      = '#16a34a';
+                badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> Data terkini — diperbarui ${waktuTeks}`;
+            } else if (missing > 0) {
+                badge.style.background = '#fef3c7';
+                badge.style.color      = '#92400e';
+                badge.innerHTML = `<i class="fa-solid fa-rotate fa-spin"></i> Memuat data (${fresh}/${total})...`;
             } else {
-                badge.style.background = '#fee2e2';
-                badge.style.color      = '#dc2626';
-                badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Cache stale (${fresh}/${total} fresh)`;
+                badge.style.background = '#fff7ed';
+                badge.style.color      = '#c2410c';
+                badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Sebagian data perlu diperbarui (${fresh}/${total} terkini)`;
             }
         })
-        .catch(() => {});
+        .catch(() => {
+            const badge = document.getElementById('cache-status-badge');
+            if (badge) {
+                badge.style.background = '#f1f5f9';
+                badge.style.color      = '#64748b';
+                badge.innerHTML = `<i class="fa-solid fa-database"></i> Status data tidak tersedia`;
+            }
+        });
 }
 
 function forceRefreshCache() {
@@ -572,11 +597,11 @@ function forceRefreshCache() {
     if (!btn) return;
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Refreshing...';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memperbarui...';
     if (badge) {
         badge.style.background = '#eff6ff';
         badge.style.color      = '#2563eb';
-        badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sedang refresh...';
+        badge.innerHTML = '<i class="fa-solid fa-rotate fa-spin"></i> Sedang memperbarui data...';
     }
 
     fetch('/api/cache_refresh', { method: 'POST',
@@ -584,17 +609,20 @@ function forceRefreshCache() {
     })
     .then(r => r.json())
     .then(d => {
-        if (window.toast) window.toast(d.message, d.status === 'success' ? 'success' : 'error');
-        // Cek ulang status setelah 8 detik (beri waktu prefetch selesai)
+        if (window.toast) window.toast(
+            d.status === 'success' ? 'Data sedang diperbarui, harap tunggu sebentar.' : d.message,
+            d.status === 'success' ? 'success' : 'error'
+        );
+        // Cek ulang setelah 8 detik
         setTimeout(() => {
             checkCacheStatus();
             btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Refresh Cache';
+            btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Perbarui Data';
         }, 8000);
     })
     .catch(() => {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Refresh Cache';
+        btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Perbarui Data';
     });
 }
 

@@ -174,6 +174,9 @@ def gs_client():
 PREFETCH_SHEETS = [
     ('kendala', 'kendalamaster'),
     ('kendala', 'unsc'),
+    ('kpi',     'tti_upload'),
+    ('kpi',     'ffg_upload'),
+    ('kpi',     'ttr_upload'),
 ]
 
 def _ensure_cache_table():
@@ -1932,36 +1935,59 @@ def _page_name(path):
 def api_cache_status():
     """Status cache — berapa sheet yang di-cache dan kapan terakhir fetch."""
     try:
+        # Bangun map cache_key → nama sheet dari PREFETCH_SHEETS saja
+        sheet_map   = {}
+        target_keys = []
+        for sp_key, sh_key in PREFETCH_SHEETS:
+            sp_id   = SPREADSHEET_IDS.get(sp_key)
+            sh_name = SHEET_NAMES.get(sp_key, {}).get(sh_key)
+            if sp_id and sh_name:
+                ck = _cache_key(sp_id, sh_name)
+                sheet_map[ck]  = sh_name
+                target_keys.append(ck)
+
+        if not target_keys:
+            return jsonify({'cache': [], 'total': 0})
+
+        # Ambil hanya cache untuk sheet yang di-prefetch
+        placeholders = ','.join(['%s'] * len(target_keys))
         with db_cursor() as (conn, cur):
-            cur.execute("""
+            cur.execute(f"""
                 SELECT
                     cache_key,
                     row_count,
                     fetched_at,
                     TIMESTAMPDIFF(SECOND, fetched_at, NOW()) AS age_seconds
                 FROM sheet_cache
+                WHERE cache_key IN ({placeholders})
                 ORDER BY fetched_at DESC
-            """)
+            """, target_keys)
             rows = cur.fetchall()
 
-        # Map cache_key ke nama sheet yang mudah dibaca
-        sheet_map = {}
-        for sp_key, sh_key in PREFETCH_SHEETS:
-            sp_id   = SPREADSHEET_IDS.get(sp_key)
-            sh_name = SHEET_NAMES.get(sp_key, {}).get(sh_key)
-            if sp_id and sh_name:
-                ck = _cache_key(sp_id, sh_name)
-                sheet_map[ck] = sh_name
-
+        # Buat result — termasuk sheet yang belum di-cache sama sekali
+        cached_keys = {r['cache_key'] for r in rows}
         result = []
+
         for r in rows:
             result.append({
-                'sheet_name': sheet_map.get(r['cache_key'], r['cache_key'][:8] + '...'),
-                'row_count':  r['row_count'],
-                'fetched_at': r['fetched_at'].strftime('%d/%m/%Y %H:%M:%S') if r['fetched_at'] else '—',
+                'sheet_name':  sheet_map.get(r['cache_key'], '—'),
+                'row_count':   r['row_count'],
+                'fetched_at':  r['fetched_at'].strftime('%d/%m/%Y %H:%M:%S') if r['fetched_at'] else '—',
                 'age_seconds': r['age_seconds'],
-                'status': 'fresh' if r['age_seconds'] < 300 else 'stale',
+                'status':      'fresh' if r['age_seconds'] < 300 else 'stale',
             })
+
+        # Sheet yang belum pernah di-cache
+        for ck in target_keys:
+            if ck not in cached_keys:
+                result.append({
+                    'sheet_name':  sheet_map.get(ck, '—'),
+                    'row_count':   0,
+                    'fetched_at':  '—',
+                    'age_seconds': 99999,
+                    'status':      'missing',
+                })
+
         return jsonify({'cache': result, 'total': len(result)})
     except Exception as e:
         return jsonify({'cache': [], 'error': str(e)})
