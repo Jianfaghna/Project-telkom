@@ -1,0 +1,306 @@
+================================================================
+  FILTERIN - PATCH GUIDE (Custom Confirm Modal + Sync Flow Audit)
+  Tanggal: 19 April 2026
+================================================================
+
+Patch ini menyelesaikan 2 masalah:
+
+  ISSUE 1 - BUG KONFIRMASI MODAL
+  Konfirmasi popup muncul tapi proses sync TETAP berjalan
+  meskipun belum klik "Ya, Sinkronkan".
+
+  ISSUE 2 - VERIFIKASI JALUR SYNC BIMA / UNSC
+  Memastikan data dari upload Excel BIMA & KPRO bisa muncul
+  di tabel Kendala Master setelah klik "Sinkronkan Data BIMA".
+
+
+===========================================================
+  PERBAIKAN ISSUE 1: CONFIRM MODAL YANG BENAR-BENAR BLOCK
+===========================================================
+
+LANGKAH 1 - TAMBAH FILE BARU
+----------------------------
+
+A. backend/static/filterin-confirm.js   (FILE BARU)
+B. backend/static/filterin-confirm.css  (FILE BARU)
+
+Isi file ada di:
+   /tmp/project-telkom/backend/static/filterin-confirm.js
+   /tmp/project-telkom/backend/static/filterin-confirm.css
+
+Atau pull dari branch perbaikan saya.
+
+
+LANGKAH 2 - EDIT base.html
+--------------------------
+
+File: backend/templates/base.html
+
+Cari baris ini (sekitar line 13):
+
+   <link rel="stylesheet" href="{{ url_for('static', filename='filterin-modern.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='kendalamaster.css') }}">
+
+TAMBAHKAN di tengah-tengah jadi:
+
+   <link rel="stylesheet" href="{{ url_for('static', filename='filterin-modern.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='filterin-confirm.css') }}">  <-- BARIS BARU
+   <link rel="stylesheet" href="{{ url_for('static', filename='kendalamaster.css') }}">
+
+
+Cari di paling bawah (sekitar line 244):
+
+   <script src="{{ url_for('static', filename='filterin-core.js') }}"></script>
+
+TAMBAHKAN baris di bawahnya:
+
+   <script src="{{ url_for('static', filename='filterin-core.js') }}"></script>
+   <script src="{{ url_for('static', filename='filterin-confirm.js') }}"></script>  <-- BARIS BARU
+
+
+LANGKAH 3 - EDIT kendalamaster.html
+-----------------------------------
+
+File: backend/templates/kendalamaster.html
+
+GANTI bagian triggerSyncBima (sekitar line 816-817):
+
+   ============== SEBELUM ==============
+   async function triggerSyncBima() {
+       if (!confirm('Sinkronisasi BIMA akan menarik data dari IMPORT BIMA (FRESH). Lanjutkan?')) return;
+       const btn = document.getElementById('syncButton');
+
+   ============== SESUDAH ==============
+   async function triggerSyncBima() {
+       const ok = await showConfirm({
+           title: 'Sinkronisasi Data BIMA',
+           message: 'Proses ini akan menarik data baru dari sheet <strong>IMPORT BIMA (FRESH)</strong> dan menambahkannya ke <strong>DB Kendala Master</strong>.',
+           confirmText: 'Ya, Sinkronkan',
+           cancelText: 'Batal',
+           icon: 'fa-sync-alt',
+           variant: 'success',
+           warning: 'Data baru akan ditambahkan. Order yang sudah ada <strong>tidak akan ditimpa</strong>. Pastikan sheet IMPORT BIMA (FRESH) sudah berisi data terbaru.',
+       });
+       if (!ok) return;   // user klik Batal — sync TIDAK jalan
+       const btn = document.getElementById('syncButton');
+
+
+GANTI bagian triggerMoveUnsc (sekitar line 868-869):
+
+   ============== SEBELUM ==============
+   async function triggerMoveUnsc() {
+       if (!confirm('Data VERIFIKASI UNSC + BELUM ADA akan dipindahkan ke sheet UNSC. Lanjutkan?')) return;
+       const btn = document.getElementById('moveUnscButton');
+
+   ============== SESUDAH ==============
+   async function triggerMoveUnsc() {
+       const ok = await showConfirm({
+           title: 'Otomatisasi UNSC',
+           message: 'Data dengan <strong>FEEDBACK ASO = "VERIFIKASI UNSC"</strong> dan <strong>CEK DB UNSC = "BELUM ADA"</strong> akan dipindahkan ke sheet <strong>DB UNSC (END STATE)</strong>.',
+           confirmText: 'Ya, Pindahkan',
+           cancelText: 'Batal',
+           icon: 'fa-arrow-right',
+           variant: 'success',
+           warning: 'Aksi ini akan menambahkan baris baru di sheet UNSC. Data asli di DB Kendala tetap ada.',
+       });
+       if (!ok) return;   // user klik Batal — move TIDAK jalan
+       const btn = document.getElementById('moveUnscButton');
+
+
+LANGKAH 4 - HAPUS CUSTOM MODAL HTML LAMA (kalau ada)
+----------------------------------------------------
+
+Kalau Anda dulu menambahkan elemen HTML modal sendiri di
+kendalamaster.html dengan teks "Sinkronisasi Data BIMA" dan
+tombol "Ya, Sinkronkan" / "Batal", HAPUS itu — karena
+sekarang modal dibuat otomatis oleh filterin-confirm.js.
+
+Cari elemen seperti:
+   <div class="modal-overlay" id="sync-confirm-modal">...</div>
+Atau:
+   <div id="confirm-bima-modal">...</div>
+
+Hapus.
+
+
+LANGKAH 5 - RESTART FLASK
+-------------------------
+
+Stop server (Ctrl+C), lalu jalankan ulang:
+   python app_flask.py
+
+Hard refresh browser:  Ctrl + F5
+
+
+===========================================================
+  PENJELASAN JALUR SYNC BIMA / UNSC
+===========================================================
+
+Inti pertanyaan: "Kalau saya upload BIMA dan KPRO, apa data nya
+akan tampil di tabel Kendala Master?"
+
+JAWABAN: TIDAK langsung. Perlu langkah Sinkronisasi.
+
+
+ARSITEKTUR DATA FLOW
+====================
+
+Ada DUA Google Spreadsheet yang berbeda:
+
+   SPREADSHEET_UPLOAD     = 1XUF1ouXjo7Od5qq9r84lJmgXDhyhgpWuA2NvZNRtgTA
+   SPREADSHEET_KENDALA    = 1DnTNp95IbLU1Rta3vF-IGk3kvu47WWmHkaxoRPtjWJ8
+
+(Dua-duanya di .env)
+
+
+Step-by-step flow:
+
+   1. User upload "BIMA.xlsx" via halaman /upload
+      => Sistem filter (WSA + CREATE/MIGRATE + WORKFAIL)
+      => Tulis ke sheet "BIMA" di SPREADSHEET_UPLOAD
+
+   2. User upload "KPRO.xls" via halaman /upload
+      => Sistem drop 4 kolom (CRMORDERTYPE, REGIONAL LAMA,
+         DISTRICT LAMA, DATEL LAMA)
+      => Tulis ke sheet "KPRO" di SPREADSHEET_UPLOAD
+
+   3. ⚠️ PENTING: Data hasil upload BELUM masuk DB Kendala.
+      Sheet "IMPORT BIMA (FRESH)" di SPREADSHEET_KENDALA
+      harus terhubung ke sheet "BIMA" di SPREADSHEET_UPLOAD
+      melalui formula IMPORTRANGE.
+
+   4. User klik tombol "Sinkronkan Data BIMA"
+      => Sistem baca dari sheet "IMPORT BIMA (FRESH)"
+         di SPREADSHEET_KENDALA
+      => Cek ORDER_ID nya
+         - Kalau sudah ada di DB Kendala => UPDATE (kolom B-K)
+         - Kalau belum ada di DB Kendala => TAMBAH baris baru
+      => Audit log dicatat.
+
+
+CARA VERIFIKASI JALUR INI BENAR (CHECKLIST)
+===========================================
+
+[1] Buka SPREADSHEET_UPLOAD di browser:
+    https://docs.google.com/spreadsheets/d/1XUF1ouXjo7Od5qq9r84lJmgXDhyhgpWuA2NvZNRtgTA
+
+[2] Lihat tab "BIMA" — apakah ada data setelah upload?
+    - Header di Baris 1
+    - Data di Baris 2 dst
+    - Kalau kosong: upload gagal atau filter tidak match.
+
+[3] Buka SPREADSHEET_KENDALA di browser:
+    https://docs.google.com/spreadsheets/d/1DnTNp95IbLU1Rta3vF-IGk3kvu47WWmHkaxoRPtjWJ8
+
+[4] Lihat tab "IMPORT BIMA (FRESH)" — apakah ada data?
+    - Kalau ADA: jalur benar, lanjut step 5
+    - Kalau KOSONG: IMPORTRANGE belum di-set. Lakukan:
+
+      a. Klik cell A1 di sheet IMPORT BIMA (FRESH)
+      b. Ketik formula:
+
+         =IMPORTRANGE("1XUF1ouXjo7Od5qq9r84lJmgXDhyhgpWuA2NvZNRtgTA", "BIMA!A:Z")
+
+      c. Tekan Enter
+      d. Klik cell-nya lagi → akan muncul tombol "Allow access"
+      e. Klik Allow access
+      f. Tunggu sebentar, data akan muncul
+
+[5] Sekarang klik "Sinkronkan Data BIMA" di FilterIN.
+
+[6] Hasil yang diharapkan:
+    "Sukses! Update: X, Tambah: Y"
+    - Update X = jumlah ORDER_ID yang sudah ada (kolom B-K di-refresh)
+    - Tambah Y = jumlah ORDER_ID baru yang belum pernah ada
+
+[7] Kalau hasil: "Update: 0, Tambah: 0"
+    Artinya: TIDAK ADA data baru/perubahan.
+    Penyebab umumnya:
+    - Sheet IMPORT BIMA (FRESH) kosong
+    - Semua ORDER_ID di sheet itu sudah ada di DB KENDALA
+      (jadi tidak ada yang baru untuk ditambahkan)
+    - Tidak ada perubahan di kolom B-K yang berbeda dari
+      data existing
+
+
+JALUR UNSC (Otomatisasi)
+========================
+
+Tombol "Pindahkan ke UNSC" bekerja seperti ini:
+
+   1. Sistem baca seluruh sheet "DB KENDALA (MASTER)"
+   2. Filter baris dengan:
+      - FEEDBACK ASO = "VERIFIKASI UNSC" (atau typo lama
+        "VERIVIKASI UNSC" — backward compat)
+      DAN
+      - CEK DB UNSC = "BELUM ADA"
+   3. Untuk setiap baris yang match:
+      - Ambil kolom C-I (DEVICE_ID, STO, DATEL, STATUS_RESUME,
+        SUBERRORCODE, ENGINEERMEMO, ORDER_DATE)
+      - Append ke sheet "DB UNSC (END STATE)"
+      - Set kolom A kosong (untuk diisi manual nanti)
+   4. Data ASLI di DB KENDALA tetap ada — UNSC hanya
+      bertambah baris.
+
+Setelah data masuk UNSC, biasanya user manual:
+   - Update CEK DB UNSC ke "SUDAH ADA" di DB KENDALA
+   - Atau lakukan validasi di sheet UNSC
+
+
+===========================================================
+  KESIMPULAN
+===========================================================
+
+1. Confirm modal sekarang BENAR-BENAR block proses.
+   Klik Batal = tidak ada API call.
+   Klik Ya = baru fetch ke server.
+
+2. Sync BIMA = baca dari sheet "IMPORT BIMA (FRESH)" di
+   SPREADSHEET_KENDALA, bukan dari upload spreadsheet langsung.
+
+   Yang Anda upload tinggal di SPREADSHEET_UPLOAD.
+   Bridge antara keduanya adalah formula IMPORTRANGE
+   di sheet IMPORT BIMA (FRESH) (di SPREADSHEET_KENDALA).
+
+3. Kalau hasil "Update: 0, Tambah: 0" berulang kali,
+   cek sheet IMPORT BIMA (FRESH) — pastikan dia BERISI DATA.
+
+
+===========================================================
+  TROUBLESHOOTING TAMBAHAN
+===========================================================
+
+Q: Setelah upload BIMA, sheet "BIMA" di upload spreadsheet
+   kosong / berkurang.
+A: Filter terlalu ketat. Cek kondisi di filter_data():
+   - SC Order No/Track ID/CSRM No HARUS mengandung "WSA"
+   - CRM Order Type HARUS "CREATE" atau "MIGRATE"
+   - Status HARUS "WORKFAIL"
+   Kalau file Excel Anda tidak ada yang match semua kondisi,
+   hasilnya kosong.
+
+Q: Sheet "IMPORT BIMA (FRESH)" punya data tapi sync hasilnya 0.
+A: Cek nama kolom di sheet itu. sync_bima_to_kendala() expect
+   kolom: Workorder, HELPER ORDER ID, SC Order No/Track ID/CSRM No,
+   Workzone, Status, SUBERRORCODE, ENGINEERMEMO, TGL_CREATE,
+   TGL_UPDATE_STATUS.
+
+Q: Sync error "Header BIMA hilang: ..."
+A: Sheet IMPORT BIMA (FRESH) header tidak sesuai.
+   Cek baris 1 sheet itu di Google Sheets, samakan nama kolomnya
+   dengan yang di-expect di sync_bima_to_kendala().
+
+Q: Tombol "Sinkronkan" disabled / abu-abu.
+A: Sync masih berjalan. Tunggu sampai selesai.
+
+Q: Modal konfirmasi tidak muncul sama sekali.
+A: Cek browser console (F12 > Console).
+   Kemungkinan filterin-confirm.js error / belum ke-load.
+   Verifikasi file ada di backend/static/ dan terpanggil di base.html.
+
+
+================================================================
+  SELAMAT! BUG SUDAH BERESS.
+  Kalau masih ada pertanyaan, share screenshot console (F12)
+  atau error message-nya.
+================================================================

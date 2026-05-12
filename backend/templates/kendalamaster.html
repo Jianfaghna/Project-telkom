@@ -354,7 +354,16 @@
 
     // ---------- Sync & Move ----------
     async function triggerSyncBima() {
-        if (!confirm('Sinkronisasi BIMA akan menarik data dari IMPORT BIMA (FRESH). Lanjutkan?')) return;
+        const ok = await showConfirm({
+            title: 'Sinkronisasi Data BIMA',
+            message: 'Proses ini akan menarik data baru dari sheet <strong>IMPORT BIMA (FRESH)</strong> dan menambahkannya ke <strong>DB Kendala Master</strong>.',
+            confirmText: 'Ya, Sinkronkan',
+            cancelText: 'Batal',
+            icon: 'fa-sync-alt',
+            variant: 'success',
+            warning: 'Data baru akan ditambahkan. Order yang sudah ada <strong>tidak akan ditimpa</strong>. Pastikan sheet IMPORT BIMA (FRESH) sudah berisi data terbaru.',
+        });
+        if (!ok) return;   // user klik Batal — sync TIDAK jalan
         const btn = document.getElementById('syncButton');
         const st = document.getElementById('syncStatus');
         btn.disabled = true;
@@ -383,7 +392,16 @@
     window.triggerSyncBima = triggerSyncBima;
 
     async function triggerMoveUnsc() {
-        if (!confirm('Data VERIFIKASI UNSC + BELUM ADA akan dipindahkan ke sheet UNSC. Lanjutkan?')) return;
+        const ok = await showConfirm({
+            title: 'Otomatisasi UNSC',
+            message: 'Data dengan <strong>FEEDBACK ASO = "VERIFIKASI UNSC"</strong> dan <strong>CEK DB UNSC = "BELUM ADA"</strong> akan dipindahkan ke sheet <strong>DB UNSC (END STATE)</strong>.',
+            confirmText: 'Ya, Pindahkan',
+            cancelText: 'Batal',
+            icon: 'fa-arrow-right',
+            variant: 'success',
+            warning: 'Aksi ini akan menambahkan baris baru di sheet UNSC. Data asli di DB Kendala tetap ada.',
+        });
+        if (!ok) return;   // user klik Batal — move TIDAK jalan
         const btn = document.getElementById('moveUnscButton');
         const st = document.getElementById('moveUnscStatus');
         btn.disabled = true;
