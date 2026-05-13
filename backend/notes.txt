@@ -78,15 +78,15 @@ C. CARA INSTALASI PERTAMA KALI (STEP-BY-STEP)
   -------------------------------------------
   Di terminal ketik:
 
-     python -m venv venv
+     python -m venv myenv
 
   Lalu aktifkan:
 
-     Windows CMD   :  venv\Scripts\activate
-     Windows PowerShell :  venv\Scripts\Activate.ps1
-     Mac/Linux     :  source venv/bin/activate
+     Windows CMD        :  myenv\Scripts\activate
+     Windows PowerShell :  myenv\Scripts\Activate.ps1
+     Mac/Linux          :  source myenv/bin/activate
 
-  Kalau berhasil, prompt akan ada tulisan (venv) di depan.
+  Kalau berhasil, prompt akan ada tulisan (myenv) di depan.
 
   C.5  INSTALL SEMUA LIBRARY PYTHON
   ---------------------------------
@@ -148,6 +148,12 @@ D. SETTING DATABASE MYSQL
      - sync_new_rows   (tracking data baru dari sync BIMA)
      - login_attempts  (brute-force protection)
 
+  Lalu import juga file tambahan untuk fitur Watchlist & Announcement:
+     backend/watchlist_announcement.sql
+  Tabel yang ditambahkan:
+     - watchlist       (bookmark order yang dipantau)
+     - announcements   (pengumuman admin di dashboard)
+
   D.4  INSERT AKUN DEFAULT
   ------------------------
   Opsi A - Via script Python (RECOMMENDED, password di-hash otomatis):
@@ -174,6 +180,11 @@ D. SETTING DATABASE MYSQL
 
 E. KONFIGURASI FILE .env
 ------------------------
+Salin file template terlebih dahulu:
+
+   copy backend\.env.example backend\.env   (Windows)
+   cp backend/.env.example backend/.env     (Mac/Linux)
+
 Buka file  backend/.env  di VS Code, pastikan isinya seperti ini
 (untuk local development):
 
@@ -239,7 +250,7 @@ F. CARA MENJALANKAN APLIKASI
      TITLE FilterIN Server
      echo Starting FilterIN on port 5000...
      cd backend
-     call ..\venv\Scripts\activate
+     call ..\myenv\Scripts\activate
      waitress-serve --host=0.0.0.0 --port=5000 app_flask:flask_app
      pause
 
@@ -263,8 +274,8 @@ Catatan: password plain text akan OTOMATIS di-hash jadi pbkdf2
 saat user login pertama kali. Jadi aman.
 
 
-H. FITUR-FITUR BARU (versi 2.0)
--------------------------------
+H. FITUR-FITUR UTAMA
+--------------------
 
   H.1  QUICK EDIT MODAL (pengganti edit inline)
        Di halaman Sheet Kendala Master, klik tombol pensil ✏️
@@ -308,13 +319,35 @@ H. FITUR-FITUR BARU (versi 2.0)
        Menu sidebar "Audit Log" (hanya muncul untuk admin).
        Berisi tabel: kapan, siapa, aksi apa, row mana, kolom apa,
        nilai lama → nilai baru. Bisa filter per user / action.
+       - Jika 1 aksi edit beberapa kolom sekaligus, ditampilkan
+         sebagai 1 baris ringkasan yang bisa di-expand (accordion).
+       - Tombol "Bersihkan Log" (admin): hapus log > 7/30/90 hari
+         atau hapus semua.
 
-  H.6  DARK MODE
+  H.6  WATCHLIST — Pantau Order Tertentu
+       Di dashboard, tombol "Watchlist" (ikon bookmark).
+       Tambahkan ORDER_ID yang ingin dipantau khusus.
+       Order yang di-watchlist muncul di panel khusus di dashboard
+       beserta status terkininya (aktif/tidak, umur kendala, dll).
+       Hapus dari watchlist kapan saja.
+
+  H.7  ANNOUNCEMENT BOARD — Pengumuman Admin
+       Admin bisa posting pengumuman di dashboard (banner warna-warni).
+       Pengumuman bisa diset durasi: 30 menit, 1 jam, 6 jam,
+       12 jam, 24 jam, 3 hari, 7 hari.
+       Otomatis hilang setelah durasi habis.
+       Semua user (admin & operator) bisa lihat pengumuman aktif.
+
+  H.8  DARK MODE
        Tombol "Dark Mode" di bagian bawah sidebar.
        Pilihan disimpan di browser per user.
 
-  H.7  UI MODERN
+  H.9  UI MODERN
        - Login page: toggle show/hide password, gradient biru Telkom
+       - Ganti Password: card modern, strength indicator real-time,
+         toggle show/hide password
+       - Sidebar: active state jelas, label kategori, submenu
+         otomatis terbuka saat berada di halaman anak
        - Flash toast auto-close 5 detik, bisa di-close manual
        - Loading overlay global saat upload / sync
        - Konfirmasi dialog sebelum aksi destruktif (Sync, Move UNSC)
@@ -395,31 +428,35 @@ K. STRUKTUR FILE PROJECT (PENTING!)
 -----------------------------------
    filterin-project/
    ├─ backend/
-   │  ├─ app_flask.py          <- KODE UTAMA (edit ini untuk tambah fitur)
-   │  ├─ server.py             <- Wrapper ASGI (abaikan untuk lokal)
-   │  ├─ schema.sql            <- Struktur tabel MySQL
-   │  ├─ .env                  <- Config (JANGAN commit ke git!)
-   │  ├─ credentials.json      <- Kunci Google (JANGAN DISEBAR!)
-   │  ├─ requirements.txt      <- Daftar library
-   │  ├─ hash_password.py      <- Script utility hash password
+   │  ├─ app_flask.py               <- KODE UTAMA (edit ini untuk tambah fitur)
+   │  ├─ server.py                  <- Wrapper ASGI (abaikan untuk lokal)
+   │  ├─ schema.sql                 <- Struktur tabel MySQL utama
+   │  ├─ watchlist_announcement.sql <- Tabel watchlist & announcements
+   │  ├─ .env                       <- Config (JANGAN commit ke git!)
+   │  ├─ .env.example               <- Template .env (aman di-commit)
+   │  ├─ credentials.json           <- Kunci Google (JANGAN DISEBAR!)
+   │  ├─ requirements.txt           <- Daftar library Python
+   │  ├─ hash_password.py           <- Script utility hash password
    │  ├─ templates/
-   │  │  ├─ base.html          <- Layout utama (sidebar, header)
-   │  │  ├─ login.html         <- Halaman login
-   │  │  ├─ dashboard.html     <- Dashboard statistik
-   │  │  ├─ kendalamaster.html <- Halaman UTAMA kerja (Quick Edit)
-   │  │  ├─ unsc.html          <- Halaman UNSC
-   │  │  ├─ upload.html        <- Filter upload Excel
-   │  │  ├─ audit_log.html     <- Log audit (admin)
-   │  │  ├─ ganti_password.html
+   │  │  ├─ base.html               <- Layout utama (sidebar, header)
+   │  │  ├─ login.html              <- Halaman login
+   │  │  ├─ dashboard.html          <- Dashboard + Watchlist + Announcement
+   │  │  ├─ kendalamaster.html      <- Halaman UTAMA kerja (Quick Edit)
+   │  │  ├─ unsc.html               <- Halaman UNSC
+   │  │  ├─ upload.html             <- Filter upload Excel
+   │  │  ├─ audit_log.html          <- Log audit accordion (admin)
+   │  │  ├─ ganti_password.html     <- Ganti password (UI modern)
    │  │  └─ ...
    │  └─ static/
-   │     ├─ style.css          <- CSS asli
-   │     ├─ filterin-modern.css <- CSS baru (dark mode, modal, dll)
-   │     ├─ filterin-core.js   <- JS Quick Edit Modal, CSRF, dark mode
-   │     ├─ script.js          <- JS sidebar toggle dll
+   │     ├─ style.css               <- CSS utama + sidebar
+   │     ├─ filterin-modern.css     <- CSS dark mode, modal, dll
+   │     ├─ filterin-confirm.css    <- CSS dialog konfirmasi custom
+   │     ├─ filterin-core.js        <- JS Quick Edit, CSRF, dark mode
+   │     ├─ filterin-confirm.js     <- JS dialog konfirmasi custom
+   │     ├─ script.js               <- JS sidebar toggle dll
    │     └─ img/
-   └─ notes.txt                <- File ini
-   └─ start_filterin.bat       <- Shortcut jalanin server (opsional)
+   └─ notes.txt                     <- File ini
+   └─ start_filterin.bat            <- Shortcut jalanin server (opsional)
 
 
 L. CATATAN ARSITEKTUR (PENTING UNTUK DEVELOPER)
@@ -429,7 +466,7 @@ L. CATATAN ARSITEKTUR (PENTING UNTUK DEVELOPER)
        FilterIN TIDAK memindah data ke MySQL. Google Sheet tetap
        jadi database utama karena di-share dengan 3 unit kerja.
        MySQL HANYA untuk: users, edit_locks, audit_log,
-       sync_new_rows, login_attempts.
+       sync_new_rows, login_attempts, watchlist, announcements.
 
   L.2  Hybrid Architecture
        - Unit Kendala (Anda): edit via FilterIN web (cepat + safe)
