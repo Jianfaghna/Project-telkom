@@ -2,7 +2,7 @@
   FILTERIN v2.0 — DOKUMENTASI APLIKASI (MONITORING KENDALA & VALIDASI)
   Telkom ASO Magelang - Unit Kendala
 ================================================================
-  Dibuat oleh     : Mahasiswa magang ASO Telkom
+  Dibuat oleh     : Jianfaghna RH Mahasiswa magang ASO Telkom
   Di-refactor pada: 19 April 2026
   Versi           : 2.0 (Security + UX + Concurrency upgrade)
 ================================================================
