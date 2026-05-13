@@ -312,11 +312,25 @@ body {
     margin-right: 8px;
 }
 
-/* --- ACTIVE STATE (Jika Halaman Aktif) --- */
-.item a.active, .submenu a.active {
-    background-color: #34495e;
-    color: #3498db; /* Warna teks biru */
-    font-weight: 600;
+/* --- ACTIVE STATE --- */
+/* class active ada di <li>, bukan <a> — jadi selector harus .item.active > a */
+.item.active > a {
+    background: linear-gradient(90deg, rgba(52,152,219,0.22) 0%, rgba(52,152,219,0.04) 100%);
+    border-left: 4px solid #3498db !important;
+    color: #fff !important;
+    font-weight: 700;
+}
+.item.active > a i {
+    color: #74c0fc !important;
+}
+.item.active > a::after {
+    content: '';
+    width: 7px; height: 7px;
+    background: #3498db;
+    border-radius: 50%;
+    margin-left: auto;
+    flex-shrink: 0;
+    align-self: center;
 }
 
 /* === SIDEBAR TOGGLE & COLLAPSE LOGIC === */
@@ -975,12 +989,22 @@ tr.is-new-row td:nth-child(1) {
 
 /* === PEMBATAS MENU USER (GARIS PEMISAH) === */
 .user-menu {
-    /* Membuat garis tipis transparan di bagian atas */
-    border-top: 1px solid rgba(255, 255, 255, 0.15); 
-    
-    /* Memberi jarak agar garis tidak mepet */
-    margin-top: 15px; 
-    padding-top: 15px;
+    border-top: 1px solid rgba(255,255,255,0.12);
+    margin-top: 8px;
+    padding-top: 6px;
+    position: relative;
+}
+.user-menu::before {
+    content: 'AKUN';
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.28);
+    padding: 6px 20px 2px;
+}
+.sidebar.collapsed .user-menu::before {
+    display: none;
 }
 
     /* Base Style untuk Kotak Widget */
@@ -1054,4 +1078,52 @@ tr.is-new-row td:nth-child(1) {
     
     /* Khusus bg-warning, override text color putih jika ingin tetap hitam, 
        tapi jika ingin putih seperti gambar contoh, hapus override color di .bg-warning di atas */
-    .bg-warning h3, .bg-warning p { color: #fff; } 
+    .bg-warning h3, .bg-warning p { color: #fff; }
+
+/* ================================================================
+   SIDEBAR IMPROVEMENTS — Hierarki Submenu (Poin 3)
+   ================================================================ */
+
+/* Label kategori di atas grup menu utama */
+.menu-items .nav-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.28);
+    padding: 14px 20px 4px;
+    text-transform: uppercase;
+    display: block;
+    pointer-events: none;
+    user-select: none;
+}
+.sidebar.collapsed .nav-label { display: none; }
+
+/* Submenu parent: chevron accent saat hover dan open */
+.item > .submenu-item .fa-chevron-right {
+    color: rgba(255,255,255,0.35);
+    font-size: 11px;
+    transition: transform 0.3s ease, color 0.2s;
+}
+.item:hover > .submenu-item .fa-chevron-right {
+    color: rgba(255,255,255,0.65);
+}
+.item.show > .submenu-item {
+    background-color: rgba(52,152,219,0.14);
+    border-left: 4px solid #3498db;
+    color: #fff;
+}
+.item.show > .submenu-item .fa-chevron-right {
+    color: #74c0fc;
+    transform: rotate(90deg);
+}
+.item.show > .submenu-item i:first-child {
+    color: #74c0fc;
+}
+
+/* Submenu link: indikator aktif jika sedang di halaman itu */
+.submenu a.active-sub {
+    background-color: rgba(26,188,156,0.18) !important;
+    color: #5eead4 !important;
+    font-weight: 600;
+    padding-left: 60px !important;
+}

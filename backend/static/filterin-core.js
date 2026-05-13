@@ -353,10 +353,14 @@
         })
       })).json();
       if (res.ok) {
-        window.toast(`Berhasil menyimpan ${res.updated} kolom untuk Order ${currentRowKey}`, 'success');
+        const skipped = res.skipped || [];
+        if (skipped.length > 0) {
+          window.toast(`Tersimpan ${res.updated} kolom. Kolom tidak ditemukan di sheet: ${skipped.join(', ')}`, 'warning');
+        } else {
+          window.toast(`Berhasil menyimpan ${res.updated} kolom untuk Order ${currentRowKey}`, 'success');
+        }
         modalEl.classList.remove('show');
         currentRowNum = null; currentRowKey = null;
-        // Optionally: refresh table inline
         if (typeof window.refreshKendalaTable === 'function') window.refreshKendalaTable();
       } else {
         window.toast('Gagal: ' + (res.error || 'Unknown error'), 'error');

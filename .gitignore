@@ -30,10 +30,16 @@ next-env.d.ts
 dist/
 dist
 
-# Environment files (comprehensive coverage)
-
+# Environment files — JANGAN commit .env, tapi .env.example boleh
+.env
+.env.*
+!.env.example
+*.env
 *token.json*
 *credentials.json*
+credentials.json
+*.key
+.credentials
 
 # Logs and debug files
 npm-debug.log*
@@ -51,6 +57,7 @@ __pycache__/
 *pyc*
 venv/
 .venv/
+myenv/
 
 # Development tools
 chainlit.md
@@ -76,33 +83,5 @@ agenthub/agents/youtube/db
 # Build caches
 .cache/
 
+# Memory test files
 memory/test_credentials.md
-
-# Mobile development
-android-sdk/-e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
--e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
--e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials

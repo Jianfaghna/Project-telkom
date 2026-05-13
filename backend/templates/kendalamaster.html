@@ -9,6 +9,22 @@
     [data-theme="dark"] .filter-card label,
     [data-theme="dark"] .filter-card h3 { color: var(--text-muted); }
 
+    [data-theme="dark"] .filter-card select,
+    [data-theme="dark"] .filter-card input[type="date"],
+    [data-theme="dark"] .filter-card input[type="text"] {
+        background: var(--surface-2, #1a2332) !important;
+        color: var(--text, #e2e8f0) !important;
+        border: 1px solid var(--border-strong, #334155) !important;
+    }
+    [data-theme="dark"] .filter-card select option {
+        background: #1a2332;
+        color: #e2e8f0;
+    }
+    [data-theme="dark"] .filter-card .chip-count {
+        background: #0c2a4a !important;
+        color: #7dd3fc !important;
+    }
+
     [data-theme="dark"] .controls-bar {
         background: var(--surface);
         border-color: var(--border);
@@ -36,12 +52,16 @@
         background-color: #374151 !important;
         color: #cbd5e1 !important;
     }
+    [data-theme="dark"] .editable-table td {
+        color: #e2e8f0 !important;
+    }
     [data-theme="dark"] .editable-table td:nth-child(1) {
         background-color: #1e2d3d !important;
         color: #94a3b8 !important;
     }
     [data-theme="dark"] .editable-table tr:nth-child(even) td {
         background-color: #111827 !important;
+        color: #e2e8f0 !important;
     }
     [data-theme="dark"] .editable-table tr:nth-child(even) td:nth-child(1) {
         background-color: #162032 !important;

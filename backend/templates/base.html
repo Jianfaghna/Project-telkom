@@ -69,15 +69,22 @@
             </div>
         </a>
 
+        {% set ep = request.endpoint %}
+        {% set in_pengerjaan = ep in ('upload','kendala_master','unsc','verifikasi_odp_full') %}
+        {% set in_kpi        = ep in ('kpi_index','kpi_detail') %}
+        {% set in_tabel      = ep == 'tabel' %}
+
         <div class="menu-content">
             <ul class="menu-items">
-                <li class="item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                <span class="nav-label">Menu</span>
+
+                <li class="item {% if ep == 'dashboard' %}active{% endif %}">
                     <a href="{{ url_for('dashboard') }}" data-testid="nav-dashboard">
                         <i class="fa-solid fa-chart-line"></i><span>Dashboard</span>
                     </a>
                 </li>
 
-                <li class="item">
+                <li class="item {% if in_pengerjaan %}show{% endif %}">
                     <div class="submenu-item" data-testid="nav-pengerjaan">
                         <i class="fa-solid fa-briefcase"></i> <span>Pengerjaan Kpro</span>
                         <i class="fa-solid fa-chevron-right ms-auto"></i>
@@ -91,56 +98,39 @@
                                 <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Web KPRO
                             </a>
                         </li>
-                        <li><a href="{{ url_for('upload') }}" data-testid="nav-upload"><i class="fa-solid fa-upload"></i> Upload Data</a></li>
-                        <li><a href="{{ url_for('kendala_master') }}" data-testid="nav-kendala-master"><i class="fa-solid fa-file-excel"></i> Sheet Kendala Master</a></li>
-                        <li><a href="{{ url_for('unsc') }}" data-testid="nav-unsc"><i class="fa-solid fa-file-circle-question"></i> Sheet UNSC</a></li>
-                        <li><a href="{{ url_for('verifikasi_odp_full') }}" data-testid="nav-verifikasi-odp"><i class="fa-solid fa-user-check"></i> Validasi ODP Full</a></li>
+                        <li><a href="{{ url_for('upload') }}" data-testid="nav-upload" class="{% if ep=='upload' %}active-sub{% endif %}"><i class="fa-solid fa-upload"></i> Upload Data</a></li>
+                        <li><a href="{{ url_for('kendala_master') }}" data-testid="nav-kendala-master" class="{% if ep=='kendala_master' %}active-sub{% endif %}"><i class="fa-solid fa-file-excel"></i> Sheet Kendala Master</a></li>
+                        <li><a href="{{ url_for('unsc') }}" data-testid="nav-unsc" class="{% if ep=='unsc' %}active-sub{% endif %}"><i class="fa-solid fa-file-circle-question"></i> Sheet UNSC</a></li>
+                        <li><a href="{{ url_for('verifikasi_odp_full') }}" data-testid="nav-verifikasi-odp" class="{% if ep=='verifikasi_odp_full' %}active-sub{% endif %}"><i class="fa-solid fa-user-check"></i> Validasi ODP Full</a></li>
                     </ul>
                 </li>
 
-                
-                <li class="item">
+                <li class="item {% if in_kpi %}show{% endif %}">
                     <div class="submenu-item" data-testid="nav-kpi">
                         <i class="fa-solid fa-database"></i><span>DATA KPI</span>
                         <i class="fa-solid fa-chevron-right ms-auto"></i>
                     </div>
                     <ul class="submenu">
-                        <li>
-                            <a href="{{ url_for('kpi_index') }}">
-                                <i class="fa-solid fa-database"></i> Semua KPI
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ url_for('kpi_detail', kpi_type='tti') }}">
-                                <i class="fa-solid fa-chart-line"></i> TTI
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ url_for('kpi_detail', kpi_type='ffg') }}">
-                                <i class="fa-solid fa-circle-exclamation"></i> FFG
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ url_for('kpi_detail', kpi_type='ttr') }}">
-                                <i class="fa-solid fa-wrench"></i> TTR FFG
-                            </a>
-                        </li>
+                        <li><a href="{{ url_for('kpi_index') }}" class="{% if ep=='kpi_index' %}active-sub{% endif %}"><i class="fa-solid fa-database"></i> Semua KPI</a></li>
+                        <li><a href="{{ url_for('kpi_detail', kpi_type='tti') }}" class="{% if ep=='kpi_detail' and request.view_args.get('kpi_type')=='tti' %}active-sub{% endif %}"><i class="fa-solid fa-chart-line"></i> TTI</a></li>
+                        <li><a href="{{ url_for('kpi_detail', kpi_type='ffg') }}" class="{% if ep=='kpi_detail' and request.view_args.get('kpi_type')=='ffg' %}active-sub{% endif %}"><i class="fa-solid fa-circle-exclamation"></i> FFG</a></li>
+                        <li><a href="{{ url_for('kpi_detail', kpi_type='ttr') }}" class="{% if ep=='kpi_detail' and request.view_args.get('kpi_type')=='ttr' %}active-sub{% endif %}"><i class="fa-solid fa-wrench"></i> TTR FFG</a></li>
                     </ul>
                 </li>
 
-                <li class="item">
+                <li class="item {% if in_tabel %}show{% endif %}">
                     <div class="submenu-item" data-testid="nav-tabel">
                         <i class="fa-solid fa-table"></i><span>Tabel</span>
                         <i class="fa-solid fa-chevron-right ms-auto"></i>
                     </div>
                     <ul class="submenu">
-                        <li><a href="{{ url_for('tabel', kelas='04') }}" data-testid="nav-bima-master">BIMA MASTER</a></li>
-                        <li><a href="{{ url_for('tabel', kelas='05') }}" data-testid="nav-kpro">KPRO</a></li>
-                        <li><a href="{{ url_for('tabel', kelas='06') }}" data-testid="nav-bima">BIMA</a></li>
+                        <li><a href="{{ url_for('tabel', kelas='04') }}" data-testid="nav-bima-master" class="{% if in_tabel and request.args.get('kelas')=='04' %}active-sub{% endif %}">BIMA MASTER</a></li>
+                        <li><a href="{{ url_for('tabel', kelas='05') }}" data-testid="nav-kpro" class="{% if in_tabel and request.args.get('kelas')=='05' %}active-sub{% endif %}">KPRO</a></li>
+                        <li><a href="{{ url_for('tabel', kelas='06') }}" data-testid="nav-bima" class="{% if in_tabel and request.args.get('kelas')=='06' %}active-sub{% endif %}">BIMA</a></li>
                     </ul>
                 </li>
 
-                <li class="item">
+                <li class="item {% if ep == 'recap' %}active{% endif %}">
                     <a href="{{ url_for('recap') }}" data-testid="nav-recap">
                         <i class="fa-solid fa-chart-bar"></i>
                         <span>Laporan / Recap</span>
@@ -148,12 +138,13 @@
                 </li>
 
                 {% if user_role == 'admin' %}
-                <li class="item {% if request.endpoint == 'audit_log_view' %}active{% endif %}">
+                <span class="nav-label">Admin</span>
+                <li class="item {% if ep == 'audit_log_view' %}active{% endif %}">
                     <a href="{{ url_for('audit_log_view') }}" data-testid="nav-audit">
                         <i class="fa-solid fa-clipboard-list"></i><span>Audit Log</span>
                     </a>
                 </li>
-                <li class="item {% if request.endpoint == 'admin_users' %}active{% endif %}">
+                <li class="item {% if ep == 'admin_users' %}active{% endif %}">
                     <a href="{{ url_for('admin_users') }}" data-testid="nav-admin-users">
                         <i class="fa-solid fa-users-gear"></i><span>Manajemen User</span>
                     </a>

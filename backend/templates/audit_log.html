@@ -7,7 +7,6 @@
    AUDIT LOG — Dark Mode Patches
    ===================================================== */
 
-/* Filter card select */
 [data-theme="dark"] .filter-card select {
     background: var(--surface-2, #111827) !important;
     border-color: var(--border-strong, #475569) !important;
@@ -21,7 +20,6 @@
     color: var(--text-muted, #94a3b8) !important;
 }
 
-/* Tabel */
 [data-theme="dark"] .audit-table {
     background: var(--surface, #1a2332) !important;
 }
@@ -41,11 +39,8 @@
 [data-theme="dark"] .audit-table strong {
     color: var(--text, #e2e8f0) !important;
 }
-[data-theme="dark"] .audit-table td[style*="monospace"] {
-    color: var(--text-muted, #94a3b8) !important;
-}
 
-/* Badge action — dark mode variants */
+/* Badge action */
 [data-theme="dark"] .audit-action {
     background: #1e3a5f !important;
     color: #93c5fd !important;
@@ -73,45 +68,140 @@
     color: #5eead4 !important;
 }
 
-/* Kolom Old → New */
-[data-theme="dark"] .old-value {
-    color: var(--text-muted, #94a3b8) !important;
-}
-[data-theme="dark"] .new-value {
-    color: var(--text, #e2e8f0) !important;
-}
-
-/* Chip count */
-[data-theme="dark"] .chip-count {
-    background: #0c4a6e !important;
-    color: #bae6fd !important;
-}
-
-/* Pagination */
+[data-theme="dark"] .old-value { color: var(--text-muted, #94a3b8) !important; }
+[data-theme="dark"] .new-value { color: var(--text, #e2e8f0) !important; }
+[data-theme="dark"] .chip-count { background: #0c4a6e !important; color: #bae6fd !important; }
 [data-theme="dark"] .pagination-info { color: var(--text-muted, #94a3b8); }
 [data-theme="dark"] .pagination-controls a { color: var(--text, #e2e8f0); }
 
-/* Grouping baris satu aksi — garis kiri tipis */
-.audit-table tbody tr.same-group td:first-child {
-    border-left: 3px solid transparent;
+/* Accordion detail rows */
+.audit-detail-row td {
+    background: var(--surface-2, #f8fafc) !important;
+    font-size: 12px;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
 }
-.audit-table tbody tr.group-start td {
-    border-top: 2px solid var(--border, #e2e8f0) !important;
+[data-theme="dark"] .audit-detail-row td {
+    background: #111827 !important;
+    border-bottom-color: var(--border, #2d3748) !important;
 }
-[data-theme="dark"] .audit-table tbody tr.group-start td {
-    border-top-color: var(--border-strong, #475569) !important;
+.audit-detail-row.hidden { display: none; }
+
+/* Toggle expand button */
+.expand-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted, #94a3b8);
+    font-size: 13px;
+    padding: 0 4px;
+    line-height: 1;
+    transition: transform 0.2s;
 }
+.expand-btn.open { transform: rotate(90deg); color: var(--primary, #3b82f6); }
+
+/* Count badge inside table */
+.detail-count {
+    display: inline-block;
+    background: #e0e7ff;
+    color: #3730a3;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 7px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+[data-theme="dark"] .detail-count {
+    background: #1e3a5f;
+    color: #93c5fd;
+}
+
+/* Clear modal overlay */
+#clear-log-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+#clear-log-modal.show { display: flex; }
+#clear-log-modal .modal-box {
+    background: var(--surface, #fff);
+    border-radius: 12px;
+    padding: 28px 32px;
+    width: 360px;
+    max-width: 95vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+[data-theme="dark"] #clear-log-modal .modal-box {
+    background: #1a2332;
+    border: 1px solid #2d3748;
+}
+#clear-log-modal h3 {
+    margin: 0 0 6px;
+    font-size: 16px;
+    color: var(--text, #1e293b);
+}
+#clear-log-modal p {
+    font-size: 13px;
+    color: var(--text-muted, #64748b);
+    margin: 0 0 18px;
+}
+[data-theme="dark"] #clear-log-modal h3 { color: #e2e8f0; }
+[data-theme="dark"] #clear-log-modal p  { color: #94a3b8; }
+.clear-option-btn {
+    display: block;
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border, #e2e8f0);
+    background: var(--surface, #fff);
+    color: var(--text, #1e293b);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.clear-option-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+.clear-option-btn.danger {
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+.clear-option-btn.danger:hover { background: #fef2f2; }
+[data-theme="dark"] .clear-option-btn {
+    background: #111827;
+    border-color: #2d3748;
+    color: #e2e8f0;
+}
+[data-theme="dark"] .clear-option-btn:hover { background: #1e293b; border-color: #475569; }
+[data-theme="dark"] .clear-option-btn.danger { border-color: #7f1d1d; color: #f87171; }
+[data-theme="dark"] .clear-option-btn.danger:hover { background: #1c0d0d; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="main-content" data-testid="audit-log-page">
 
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
         <h1 style="margin:0; font-size:22px; color:var(--text);">
             <i class="fa-solid fa-clipboard-list"></i> Audit Log
         </h1>
-        <span class="chip-count">{{ total }} entries</span>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span class="chip-count">{{ total }} entries</span>
+            {% if current_user.role == 'admin' %}
+            <button class="toolbar-btn" style="color:#dc2626; border-color:#fca5a5;"
+                    onclick="document.getElementById('clear-log-modal').classList.add('show')">
+                <i class="fa-solid fa-trash-can"></i> Bersihkan Log
+            </button>
+            {% endif %}
+        </div>
     </div>
 
     <!-- FILTER -->
@@ -158,62 +248,102 @@
                     <th>Action</th>
                     <th>Sheet</th>
                     <th>Row / Order ID</th>
-                    <th>Column</th>
-                    <th style="min-width:200px;">Old → New</th>
+                    <th style="min-width:200px;">Detail Perubahan</th>
                     <th>IP</th>
                 </tr>
             </thead>
             <tbody>
-                {% set prev_ts = namespace(val='', prev_user='') %}
-                {% for r in rows %}
-                {% set ts_str = r.timestamp.strftime('%d/%m/%Y %H:%M:%S') %}
-                {% set is_new_group = (ts_str != prev_ts.val or r.username != prev_ts.prev_user) %}
-                <tr {% if is_new_group and not loop.first %}class="group-start"{% endif %}>
+                {% if groups %}
+                {% for g in groups %}
+                {% set gid = loop.index %}
+                {% set det_count = g.details | length %}
+                {# --- Summary row --- #}
+                <tr class="audit-summary-row"
+                    style="cursor:{{ 'pointer' if det_count > 1 else 'default' }};"
+                    {% if det_count > 1 %}onclick="toggleGroup({{ gid }})"{% endif %}>
                     <td style="font-family:monospace; font-size:12px; color:var(--text-muted);">
-                        {{ ts_str }}
+                        {% if g.timestamp %}{{ g.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}{% else %}—{% endif %}
                     </td>
                     <td>
-                        <strong style="color:var(--text);">{{ r.nama or r.username }}</strong>
+                        <strong style="color:var(--text);">{{ g.nama or g.username }}</strong>
                         <br>
-                        <small style="color:var(--text-muted); font-size:11px;">{{ r.username }}</small>
+                        <small style="color:var(--text-muted); font-size:11px;">{{ g.username }}</small>
                     </td>
                     <td>
-                        <span class="audit-action {{ r.action }}">{{ r.action }}</span>
+                        <span class="audit-action {{ g.action }}">{{ g.action }}</span>
                     </td>
-                    <td style="color:var(--text); font-size:12px;">{{ r.sheet_name or '—' }}</td>
+                    <td style="color:var(--text); font-size:12px;">{{ g.sheet_name or '—' }}</td>
                     <td style="font-family:monospace; font-size:12px; color:var(--text); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
-                        title="{{ r.row_key or '' }}">
-                        {{ r.row_key or '—' }}
+                        title="{{ g.row_key or '' }}">
+                        {{ g.row_key or '—' }}
                     </td>
-                    <td style="color:var(--text); font-size:12px; font-weight:600;">
-                        {{ r.column_name or '—' }}
-                    </td>
-                    <td style="max-width:280px;">
-                        {% if r.old_value or r.new_value %}
-                            <div class="old-value" style="font-size:11px; color:var(--text-muted); margin-bottom:3px; text-decoration:line-through; opacity:0.8;">
-                                {{ r.old_value or '(kosong)' }}
-                            </div>
-                            <div class="new-value" style="font-weight:600; color:var(--text); font-size:12px;">
-                                → {{ r.new_value or '(kosong)' }}
-                            </div>
+                    <td style="max-width:300px;">
+                        {% if det_count > 1 %}
+                            <button class="expand-btn" id="expand-btn-{{ gid }}"
+                                    onclick="event.stopPropagation(); toggleGroup({{ gid }})"
+                                    title="Lihat semua perubahan">
+                                &#9654;
+                            </button>
+                            <span style="font-size:12px; color:var(--text-muted);">{{ g.details[0].column_name or '—' }}</span>
+                            <span class="detail-count">{{ det_count }} kolom</span>
                         {% else %}
-                            <span style="color:var(--text-muted);">—</span>
+                            {% if g.details[0].old_value or g.details[0].new_value %}
+                                <div style="font-size:11px; color:var(--text-muted);">
+                                    <strong style="color:var(--text); font-size:12px;">{{ g.details[0].column_name or '—' }}</strong>
+                                </div>
+                                <div class="old-value" style="font-size:11px; text-decoration:line-through; opacity:0.8; margin-top:2px;">
+                                    {{ g.details[0].old_value or '(kosong)' }}
+                                </div>
+                                <div class="new-value" style="font-weight:600; font-size:12px; margin-top:1px;">
+                                    → {{ g.details[0].new_value or '(kosong)' }}
+                                </div>
+                            {% else %}
+                                <span style="color:var(--text-muted);">—</span>
+                            {% endif %}
                         {% endif %}
                     </td>
                     <td style="font-family:monospace; font-size:11px; color:var(--text-muted);">
-                        {{ r.ip_address or '—' }}
+                        {{ g.ip_address or '—' }}
                     </td>
                 </tr>
-                {% set prev_ts.val = ts_str %}
-                {% set prev_ts.prev_user = r.username %}
+                {# --- Detail rows (hanya jika multi kolom) --- #}
+                {% if det_count > 1 %}
+                {% for d in g.details %}
+                <tr class="audit-detail-row hidden" id="detail-{{ gid }}-{{ loop.index }}">
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td style="padding-left:24px;">
+                        <div style="display:flex; align-items:flex-start; gap:8px;">
+                            <span style="font-size:11px; color:var(--text-muted); min-width:8px; margin-top:2px;">↳</span>
+                            <div>
+                                <div style="font-weight:600; font-size:12px; color:var(--text);">{{ d.column_name or '—' }}</div>
+                                {% if d.old_value or d.new_value %}
+                                <div class="old-value" style="font-size:11px; text-decoration:line-through; opacity:0.8; margin-top:1px;">
+                                    {{ d.old_value or '(kosong)' }}
+                                </div>
+                                <div class="new-value" style="font-weight:600; font-size:12px;">
+                                    → {{ d.new_value or '(kosong)' }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td></td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
                 {% else %}
                 <tr>
-                    <td colspan="8" style="text-align:center; padding:40px; color:var(--text-muted);">
+                    <td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">
                         <i class="fa-solid fa-inbox" style="font-size:32px; opacity:0.4; display:block; margin-bottom:10px;"></i>
                         Belum ada audit log.
                     </td>
                 </tr>
-                {% endfor %}
+                {% endif %}
             </tbody>
         </table>
     </div>
@@ -241,4 +371,107 @@
     {% endif %}
 
 </div>
+
+<!-- MODAL BERSIHKAN LOG -->
+{% if current_user.role == 'admin' %}
+<div id="clear-log-modal">
+    <div class="modal-box">
+        <h3><i class="fa-solid fa-trash-can" style="color:#dc2626;"></i> Bersihkan Audit Log</h3>
+        <p>Pilih rentang waktu yang ingin dihapus dari history log:</p>
+
+        <form method="POST" action="{{ url_for('audit_log_clear') }}"
+              onsubmit="return confirmClear(this)">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="keep_days" id="clear-keep-days" value="0">
+
+            <button type="button" class="clear-option-btn"
+                    onclick="setClearDays(7)">
+                <i class="fa-solid fa-clock" style="margin-right:8px;color:#f59e0b;"></i>
+                Hapus log lebih dari <strong>7 hari</strong> lalu
+            </button>
+            <button type="button" class="clear-option-btn"
+                    onclick="setClearDays(30)">
+                <i class="fa-solid fa-clock" style="margin-right:8px;color:#f97316;"></i>
+                Hapus log lebih dari <strong>30 hari</strong> lalu
+            </button>
+            <button type="button" class="clear-option-btn"
+                    onclick="setClearDays(90)">
+                <i class="fa-solid fa-clock" style="margin-right:8px;color:#8b5cf6;"></i>
+                Hapus log lebih dari <strong>90 hari</strong> lalu
+            </button>
+            <button type="button" class="clear-option-btn danger"
+                    onclick="setClearDays(0)">
+                <i class="fa-solid fa-circle-exclamation" style="margin-right:8px;"></i>
+                Hapus <strong>semua</strong> log (tidak dapat diurungkan)
+            </button>
+
+            <div style="display:flex; gap:8px; margin-top:14px;">
+                <button type="submit" id="clear-confirm-btn" class="toolbar-btn active"
+                        style="flex:1; justify-content:center; background:#dc2626; border-color:#dc2626; display:none;">
+                    <i class="fa-solid fa-trash"></i> Konfirmasi Hapus
+                </button>
+                <button type="button" class="toolbar-btn" style="flex:1; justify-content:center;"
+                        onclick="closeClearModal()">
+                    Batal
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+/* Accordion expand/collapse */
+function toggleGroup(gid) {
+    const btn = document.getElementById('expand-btn-' + gid);
+    let idx = 1;
+    let row = document.getElementById('detail-' + gid + '-' + idx);
+    if (!row) return;
+    const isOpen = !row.classList.contains('hidden');
+    while (row) {
+        row.classList.toggle('hidden', isOpen);
+        idx++;
+        row = document.getElementById('detail-' + gid + '-' + idx);
+    }
+    if (btn) btn.classList.toggle('open', !isOpen);
+}
+
+/* Clear log modal */
+function setClearDays(days) {
+    document.getElementById('clear-keep-days').value = days;
+    const btn = document.getElementById('clear-confirm-btn');
+    btn.style.display = 'flex';
+    // Update button label
+    if (days === 0) {
+        btn.innerHTML = '<i class="fa-solid fa-trash"></i> Hapus SEMUA Log';
+    } else {
+        btn.innerHTML = '<i class="fa-solid fa-trash"></i> Hapus Log > ' + days + ' Hari';
+    }
+    // Highlight selected option
+    document.querySelectorAll('.clear-option-btn').forEach(b => b.style.outline = '');
+    event.currentTarget.style.outline = '2px solid #3b82f6';
+}
+
+function confirmClear(form) {
+    const days = parseInt(document.getElementById('clear-keep-days').value);
+    const msg = days === 0
+        ? 'Hapus SEMUA audit log? Aksi ini tidak dapat diurungkan.'
+        : 'Hapus semua log yang lebih dari ' + days + ' hari lalu?';
+    return window.confirm(msg);
+}
+
+function closeClearModal() {
+    document.getElementById('clear-log-modal').classList.remove('show');
+    document.getElementById('clear-confirm-btn').style.display = 'none';
+    document.querySelectorAll('.clear-option-btn').forEach(b => b.style.outline = '');
+}
+
+/* Close modal on backdrop click */
+document.getElementById('clear-log-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeClearModal();
+});
+</script>
 {% endblock %}

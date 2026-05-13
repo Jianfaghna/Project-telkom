@@ -745,7 +745,6 @@ def hitung_rumus_otomatis(df):
     keyword_inactive = combined.apply(lambda t: any(k in t for k in keywords))
     is_active = pd.Series(['ACTIVE'] * len(df), index=df.index)
     is_active[keyword_inactive] = 'INACTIVE'
-    is_active[manual_val.isin(['ACTIVE', 'INACTIVE'])] = manual_val[manual_val.isin(['ACTIVE', 'INACTIVE'])]
 
     # LAMA WO
     start = df.get('ORDER_DATE_DT', pd.Series([pd.NaT] * len(df)))
@@ -770,8 +769,9 @@ def hitung_rumus_otomatis(df):
         return "A. <1 HARI"
     df['UMUR KENDALA'] = delta.apply(bin_age)
 
-    # Final: >180 days always INACTIVE
+    # >180 days default INACTIVE, tapi manual override selalu menang
     is_active[delta > 180] = 'INACTIVE'
+    is_active[manual_val.isin(['ACTIVE', 'INACTIVE'])] = manual_val[manual_val.isin(['ACTIVE', 'INACTIVE'])]
     df['IS_ACTIVE_KENDALA'] = is_active
 
     # cleanup helper cols
@@ -1478,24 +1478,33 @@ def api_update_kendala_row():
     try:
         ws = get_worksheet(SPREADSHEET_IDS['kendala'], sheet)
         headers = ws.row_values(2)
+        # header_map: exact match
         header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
-        # Get old values for audit
+        # header_map_norm: normalized (uppercase + underscore) untuk fallback lookup
+        header_map_norm = {
+            str(h).strip().upper().replace(' ', '_'): i + 1
+            for i, h in enumerate(headers)
+        }
         old_row = ws.row_values(row_num)
         cells = []
+        skipped = []
         for col, val in updates.items():
             col_clean = col.strip()
-            if col_clean in header_map:
-                idx = header_map[col_clean]
+            col_norm  = col_clean.upper().replace(' ', '_')
+            idx = header_map.get(col_clean) or header_map_norm.get(col_norm)
+            if idx:
                 old_val = old_row[idx - 1] if len(old_row) >= idx else ''
                 cells.append(gspread.Cell(row=row_num, col=idx, value=val))
                 audit('update_row', sheet_name=sheet, row_key=row_key,
                       column_name=col_clean, old_value=old_val, new_value=val)
+            else:
+                skipped.append(col_clean)
         if cells:
             ws.update_cells(cells, value_input_option='USER_ENTERED')
             invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], sheet)
             release_lock(sheet, row_key)
-            return jsonify({'ok': True, 'updated': len(cells)})
-        return jsonify({'ok': False, 'error': 'Tidak ada kolom yang dikenali'}), 400
+            return jsonify({'ok': True, 'updated': len(cells), 'skipped': skipped})
+        return jsonify({'ok': False, 'error': f'Kolom tidak ditemukan di sheet: {skipped}'}), 400
     except Exception as e:
         traceback.print_exc()
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -2275,9 +2284,10 @@ def admin_delete_user():
 @login_required
 @role_required('admin')
 def audit_log_view():
+    current_user = session.get('user', {})
     page = max(request.args.get('p', 1, type=int), 1)
     per_page = 50
-    user_filter = request.args.get('user', '')
+    user_filter   = request.args.get('user', '')
     action_filter = request.args.get('action', '')
     try:
         with db_cursor() as (conn, cur):
@@ -2295,20 +2305,70 @@ def audit_log_view():
                     ORDER BY timestamp DESC LIMIT %s OFFSET %s""",
                 params + [per_page, (page - 1) * per_page]
             )
-            rows = cur.fetchall()
+            raw_rows = cur.fetchall()
             cur.execute("SELECT DISTINCT username FROM audit_log ORDER BY username")
             usernames = [r['username'] for r in cur.fetchall()]
             cur.execute("SELECT DISTINCT action FROM audit_log ORDER BY action")
             actions = [r['action'] for r in cur.fetchall()]
     except Exception as e:
         flash(f"DB error: {e}", "error")
-        rows = []; total = 0; usernames = []; actions = []
+        raw_rows = []; total = 0; usernames = []; actions = []
+
+    # Grouping: entri dengan timestamp+username+action+row_key sama → satu baris accordion
+    groups = []
+    seen = {}
+    for row in raw_rows:
+        ts_str = row['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if row['timestamp'] else ''
+        key = (ts_str, row.get('username',''), row.get('action',''), row.get('row_key',''))
+        if key not in seen:
+            seen[key] = len(groups)
+            groups.append({
+                'timestamp':  row['timestamp'],
+                'username':   row.get('username',''),
+                'nama':       row.get('nama',''),
+                'action':     row.get('action',''),
+                'sheet_name': row.get('sheet_name',''),
+                'row_key':    row.get('row_key',''),
+                'ip_address': row.get('ip_address',''),
+                'details':    [row],
+            })
+        else:
+            groups[seen[key]]['details'].append(row)
+
     total_pages = max((total + per_page - 1) // per_page, 1)
     return render_template(
-        'audit_log.html', rows=rows, page=page, total_pages=total_pages, total=total,
+        'audit_log.html', groups=groups, page=page, total_pages=total_pages, total=total,
         usernames=usernames, actions=actions,
         user_filter=user_filter, action_filter=action_filter,
+        current_user=current_user,
     )
+
+
+@flask_app.route('/audit_log/clear', methods=['POST'])
+@login_required
+@role_required('admin')
+def audit_log_clear():
+    """Hapus audit log. keep_days=0 → hapus semua, keep_days=N → simpan N hari terakhir."""
+    keep_days = request.form.get('keep_days', '0')
+    try:
+        keep_days = int(keep_days)
+    except ValueError:
+        keep_days = 0
+    try:
+        with db_cursor() as (conn, cur):
+            if keep_days > 0:
+                cur.execute(
+                    "DELETE FROM audit_log WHERE timestamp < NOW() - INTERVAL %s DAY",
+                    (keep_days,)
+                )
+                deleted = cur.rowcount
+                flash(f"Berhasil menghapus {deleted} entri log lebih dari {keep_days} hari lalu.", "success")
+            else:
+                cur.execute("DELETE FROM audit_log")
+                flash("Semua audit log berhasil dihapus.", "success")
+    except Exception as e:
+        flash(f"Gagal menghapus log: {e}", "error")
+    return redirect(url_for('audit_log_view'))
 
 # =====================================================================
 # HELPER PIVOT — hitung cross-tab dari DataFrame
@@ -2780,6 +2840,256 @@ def datel(): return render_template("datel.html", user=session.get('user')) if P
 @flask_app.route('/verifikasi_odp_full')
 @login_required
 def verifikasi_odp_full(): return render_template('verifikasi_odp_full.html', header=[], data=[])
+
+# ════════════════════════════════════════════════════════════
+# WATCHLIST — Opsi 3
+# ════════════════════════════════════════════════════════════
+ 
+@flask_app.route('/api/watchlist', methods=['GET'])
+@api_login_required
+def watchlist_get():
+    """Ambil semua watchlist (semua operator bisa lihat untuk koordinasi)."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                SELECT w.*, 
+                       DATE_FORMAT(w.flagged_at, '%d/%m/%Y %H:%i') AS flagged_at_fmt
+                FROM watchlist w
+                ORDER BY w.flagged_at DESC
+                LIMIT 50
+            """)
+            rows = cur.fetchall()
+        return jsonify(status='ok', data=rows)
+    except Exception as e:
+        return jsonify(status='error', message=str(e)), 500
+ 
+ 
+@flask_app.route('/api/watchlist/add', methods=['POST'])
+@api_login_required
+def watchlist_add():
+    """Tambah order ke watchlist."""
+    data       = request.get_json() or {}
+    order_id   = (data.get('order_id') or '').strip()
+    catatan    = (data.get('catatan') or '').strip()[:255]
+    sheet_name = data.get('sheet_name', 'kendalamaster')
+ 
+    if not order_id:
+        return jsonify(status='error', message='Order ID wajib diisi'), 400
+
+    user  = session['user']
+    uname = user['username']
+    nama  = user.get('nama', uname)
+
+    # Validasi: order_id harus ada di kendala master
+    try:
+        sheet_data = get_sheet_values(
+            SPREADSHEET_IDS['kendala'],
+            SHEET_NAMES['kendala']['kendalamaster']
+        )
+        if sheet_data and len(sheet_data) > 2:
+            # Row 0 = judul sheet, Row 1 = header kolom, Row 2+ = data
+            headers = [str(h).strip().upper() for h in sheet_data[1]]
+            if 'ORDER_ID' in headers:
+                idx = headers.index('ORDER_ID')
+                valid_ids = {
+                    str(row[idx]).strip()
+                    for row in sheet_data[2:]
+                    if len(row) > idx and str(row[idx]).strip()
+                }
+                if order_id not in valid_ids:
+                    return jsonify(
+                        status='error',
+                        message=f'Order ID "{order_id}" tidak ditemukan di Kendala Master. Periksa kembali.'
+                    ), 404
+        else:
+            return jsonify(
+                status='error',
+                message='Data Kendala Master tidak dapat diakses saat ini. Coba beberapa saat lagi.'
+            ), 503
+    except Exception as e:
+        flask_app.logger.error("watchlist_add validation error: %s", e)
+        return jsonify(
+            status='error',
+            message='Gagal memvalidasi Order ID. Coba beberapa saat lagi.'
+        ), 500
+
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                INSERT INTO watchlist (order_id, sheet_name, flagged_by, flagged_nama, catatan)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    catatan    = VALUES(catatan),
+                    flagged_at = CURRENT_TIMESTAMP
+            """, (order_id, sheet_name, uname, nama, catatan))
+        audit('watchlist_add', row_key=order_id, new_value=catatan)
+        return jsonify(status='ok', message=f'Order {order_id} berhasil ditambahkan ke watchlist')
+    except Exception as e:
+        flask_app.logger.error("watchlist_add error: %s", e)
+        return jsonify(status='error', message='Gagal menyimpan watchlist'), 500
+ 
+ 
+@flask_app.route('/api/watchlist/remove', methods=['POST'])
+@api_login_required
+def watchlist_remove():
+    """Hapus dari watchlist (hanya yang punya flag, atau admin)."""
+    data     = request.get_json() or {}
+    order_id = (data.get('order_id') or '').strip()
+    if not order_id:
+        return jsonify(status='error', message='order_id wajib diisi'), 400
+ 
+    user  = session['user']
+    uname = user['username']
+    role  = user.get('role', 'operator')
+ 
+    try:
+        with db_cursor() as (conn, cur):
+            if role == 'admin':
+                cur.execute("DELETE FROM watchlist WHERE order_id = %s", (order_id,))
+            else:
+                cur.execute(
+                    "DELETE FROM watchlist WHERE order_id = %s AND flagged_by = %s",
+                    (order_id, uname)
+                )
+            affected = cur.rowcount
+        if affected == 0:
+            return jsonify(status='error', message='Flag tidak ditemukan atau bukan milik Anda'), 403
+        audit('watchlist_remove', row_key=order_id)
+        return jsonify(status='ok', message=f'Flag {order_id} dihapus')
+    except Exception as e:
+        return jsonify(status='error', message=str(e)), 500
+ 
+ 
+@flask_app.route('/api/watchlist/auto_clean', methods=['POST'])
+@api_login_required
+def watchlist_auto_clean():
+    """Hapus watchlist untuk order yang sudah CLOSE di kendalamaster."""
+    try:
+        data = _read_mysql_cache(
+            SPREADSHEET_IDS['kendala'],
+            SHEET_NAMES['kendala']['kendalamaster']
+        )
+        if not data or len(data) < 2:
+            return jsonify(status='ok', message='Tidak ada data cache', removed=0)
+ 
+        headers = [h.strip().upper() for h in data[0]]
+        try:
+            idx_order  = headers.index('ORDER_ID')
+            idx_status = headers.index('STATUS')
+        except ValueError:
+            return jsonify(status='error', message='Kolom ORDER_ID/STATUS tidak ditemukan'), 500
+ 
+        closed_ids = [
+            row[idx_order] for row in data[1:]
+            if len(row) > idx_status and
+               str(row[idx_status]).strip().upper() in ('CLOSE', 'CLOSED', 'SELESAI')
+        ]
+ 
+        if not closed_ids:
+            return jsonify(status='ok', message='Tidak ada WO CLOSE', removed=0)
+ 
+        placeholders = ','.join(['%s'] * len(closed_ids))
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                f"DELETE FROM watchlist WHERE order_id IN ({placeholders})",
+                tuple(closed_ids)
+            )
+            removed = cur.rowcount
+ 
+        return jsonify(status='ok', message=f'{removed} flag dihapus (WO sudah CLOSE)', removed=removed)
+    except Exception as e:
+        return jsonify(status='error', message=str(e)), 500
+ 
+ 
+# ════════════════════════════════════════════════════════════
+# ANNOUNCEMENT BOARD — Opsi 4
+# ════════════════════════════════════════════════════════════
+ 
+@flask_app.route('/api/announcements', methods=['GET'])
+@api_login_required
+def announcements_get():
+    """Ambil pengumuman yang masih aktif (belum expire)."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                SELECT id, judul, isi, label, posted_by, posted_nama,
+                       DATE_FORMAT(created_at, '%d/%m/%Y %H:%i') AS created_fmt,
+                       expires_at
+                FROM announcements
+                WHERE expires_at IS NULL OR expires_at > NOW()
+                ORDER BY
+                    FIELD(label, 'PENTING', 'REMINDER', 'INFO'),
+                    created_at DESC
+                LIMIT 10
+            """)
+            rows = cur.fetchall()
+        # Ubah expires_at jadi string agar JSON-serializable
+        for r in rows:
+            if r['expires_at']:
+                r['expires_at'] = r['expires_at'].strftime('%d/%m/%Y %H:%M')
+        return jsonify(status='ok', data=rows)
+    except Exception as e:
+        return jsonify(status='error', message=str(e)), 500
+ 
+ 
+@flask_app.route('/api/announcements/add', methods=['POST'])
+@api_login_required
+@role_required('admin')
+def announcements_add():
+    """Tambah pengumuman baru (admin only)."""
+    data    = request.get_json() or {}
+    judul   = (data.get('judul') or '').strip()[:200]
+    isi     = (data.get('isi') or '').strip()
+    label   = data.get('label', 'INFO').upper()
+    expires = data.get('expires_hours')   # jam sampai expire, None = tidak expire
+ 
+    if not judul or not isi:
+        return jsonify(status='error', message='Judul dan isi wajib diisi'), 400
+    if label not in ('PENTING', 'INFO', 'REMINDER'):
+        label = 'INFO'
+ 
+    user  = session['user']
+    uname = user['username']
+    nama  = user.get('nama', uname)
+ 
+    expires_at = None
+    if expires:
+        try:
+            expires_at = datetime.now() + timedelta(hours=float(expires))
+        except (ValueError, TypeError):
+            pass
+ 
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("""
+                INSERT INTO announcements (judul, isi, label, posted_by, posted_nama, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (judul, isi, label, uname, nama, expires_at))
+            new_id = cur.lastrowid
+        audit('announcement_add', new_value=f'[{label}] {judul}')
+        return jsonify(status='ok', message='Pengumuman berhasil ditambahkan', id=new_id)
+    except Exception as e:
+        return jsonify(status='error', message=str(e)), 500
+ 
+ 
+@flask_app.route('/api/announcements/delete', methods=['POST'])
+@api_login_required
+@role_required('admin')
+def announcements_delete():
+    """Hapus pengumuman (admin only)."""
+    data = request.get_json() or {}
+    ann_id = data.get('id')
+    if not ann_id:
+        return jsonify(status='error', message='id wajib diisi'), 400
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute("DELETE FROM announcements WHERE id = %s", (ann_id,))
+        audit('announcement_delete', row_key=str(ann_id))
+        return jsonify(status='ok', message='Pengumuman dihapus')
+    except Exception as e:
+        flask_app.logger.error("announcements_delete error: %s", e)
+        return jsonify(status='error', message='Gagal menghapus pengumuman'), 500
+
 
 # =====================================================================
 # HEALTH

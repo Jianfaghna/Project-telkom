@@ -392,11 +392,462 @@
         </div>
     </div>
 
+ {# ── WIDGET BARIS BAWAH: Announcement + Watchlist ── #}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:22px;" class="bottom-widget-grid">
+ 
+        {# ── Announcement Board ── #}
+        <div class="chart-card" id="announcement-card">
+            <div class="chart-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <span><i class="fa-solid fa-bullhorn"></i> Pengumuman</span>
+                {% if session.user.role == 'admin' %}
+                <button onclick="openAddAnnouncement()"
+                        style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;
+                               padding:4px 10px;font-size:12px;cursor:pointer;">
+                    <i class="fa-solid fa-plus"></i> Tambah
+                </button>
+                {% endif %}
+            </div>
+            <div class="chart-card-body" style="padding:12px 16px;" id="ann-list">
+                <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Memuat...
+                </div>
+            </div>
+        </div>
+ 
+        {# ── Watchlist ── #}
+        <div class="chart-card" id="watchlist-card">
+            <div class="chart-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <span><i class="fa-solid fa-flag"></i> Watchlist Order</span>
+                <span style="font-size:12px;color:var(--text-muted);">Semua operator</span>
+            </div>
+            <div class="chart-card-body" style="padding:12px 16px;" id="wl-list">
+                <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Memuat...
+                </div>
+            </div>
+        </div>
+ 
+    </div>{# end bottom-widget-grid #}
+ 
+</div>{# end dash-wrap #}
+ 
+{# ── Modal Tambah Pengumuman (Admin) ── #}
+{% if session.user.role == 'admin' %}
+<div id="modal-add-ann" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+     z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--surface);border-radius:12px;padding:24px;width:420px;
+                max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 16px;color:var(--text);font-size:16px;">
+            <i class="fa-solid fa-bullhorn"></i> Tambah Pengumuman
+        </h3>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <input id="ann-judul" type="text" placeholder="Judul pengumuman..."
+                   style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;
+                          background:var(--surface-2);color:var(--text);font-size:13px;">
+            <textarea id="ann-isi" placeholder="Isi pengumuman..." rows="3"
+                      style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;
+                             background:var(--surface-2);color:var(--text);font-size:13px;
+                             resize:vertical;"></textarea>
+            <div style="display:flex;gap:10px;">
+                <select id="ann-label"
+                        style="flex:1;padding:8px 12px;border:1px solid var(--border);
+                               border-radius:6px;background:var(--surface-2);color:var(--text);font-size:13px;">
+                    <option value="INFO">ℹ️ INFO</option>
+                    <option value="PENTING">🚨 PENTING</option>
+                    <option value="REMINDER">🔔 REMINDER</option>
+                </select>
+                <select id="ann-expires"
+                        style="flex:1;padding:8px 12px;border:1px solid var(--border);
+                               border-radius:6px;background:var(--surface-2);color:var(--text);font-size:13px;">
+                    <option value="">Tidak expire</option>
+                    <option value="0.5">30 menit</option>
+                    <option value="1">1 jam</option>
+                    <option value="6">6 jam</option>
+                    <option value="12">12 jam</option>
+                    <option value="24">1 hari</option>
+                    <option value="72">3 hari</option>
+                    <option value="168">7 hari</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+            <button onclick="closeAddAnnouncement()"
+                    style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;
+                           background:transparent;color:var(--text);cursor:pointer;font-size:13px;">
+                Batal
+            </button>
+            <button onclick="submitAnnouncement()"
+                    style="padding:8px 16px;background:#1d4ed8;color:#fff;border:none;
+                           border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">
+                <i class="fa-solid fa-paper-plane"></i> Post
+            </button>
+        </div>
+    </div>
 </div>
+{% endif %}
+ 
+{# ── Modal Flag Watchlist ── #}
+<div id="modal-add-wl" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+     z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--surface);border-radius:12px;padding:24px;width:380px;
+                max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 4px;color:var(--text);font-size:16px;">
+            <i class="fa-solid fa-flag" style="color:#f59e0b;"></i> Flag Order ke Watchlist
+        </h3>
+        <p style="margin:0 0 14px;font-size:12px;color:var(--text-muted);">
+            Order ini akan terlihat oleh semua operator untuk koordinasi.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <input id="wl-order-id" type="text" placeholder="ORDER_ID (contoh: WO425111...)"
+                   style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;
+                          background:var(--surface-2);color:var(--text);font-size:13px;">
+            <input id="wl-catatan" type="text" placeholder="Catatan singkat (opsional)..."
+                   style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;
+                          background:var(--surface-2);color:var(--text);font-size:13px;">
+        </div>
+        <div id="wl-error-msg" style="display:none;margin-top:10px;padding:8px 12px;
+             background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;
+             color:#b91c1c;font-size:12px;line-height:1.5;"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+            <button onclick="closeAddWatchlist()"
+                    style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;
+                           background:transparent;color:var(--text);cursor:pointer;font-size:13px;">
+                Batal
+            </button>
+            <button id="wl-btn-submit" onclick="submitWatchlist()"
+                    style="padding:8px 16px;background:#f59e0b;color:#fff;border:none;
+                           border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">
+                <i class="fa-solid fa-flag"></i> Flag
+            </button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts_extra %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+ 
+{# ════════════════════════════════════════════
+   ANNOUNCEMENT BOARD — JS
+════════════════════════════════════════════ #}
+const ANN_LABEL_STYLE = {
+    'PENTING':  { bg:'#fef2f2', color:'#b91c1c', icon:'🚨', border:'#fca5a5' },
+    'INFO':     { bg:'#eff6ff', color:'#1d4ed8', icon:'ℹ️', border:'#93c5fd' },
+    'REMINDER': { bg:'#fffbeb', color:'#b45309', icon:'🔔', border:'#fcd34d' },
+};
+ 
+function loadAnnouncements() {
+    fetch('/api/announcements')
+        .then(r => r.json())
+        .then(d => {
+            const el = document.getElementById('ann-list');
+            if (!d.data || d.data.length === 0) {
+                el.innerHTML = `<div style="color:var(--text-muted);font-size:13px;
+                    text-align:center;padding:20px 0;">
+                    <i class="fa-solid fa-bell-slash"></i> Tidak ada pengumuman aktif
+                </div>`;
+                return;
+            }
+            el.innerHTML = d.data.map(a => {
+                const s = ANN_LABEL_STYLE[a.label] || ANN_LABEL_STYLE['INFO'];
+                const isAdmin = {{ 'true' if session.user.role == 'admin' else 'false' }};
+                return `
+                <div style="background:${s.bg};border:1px solid ${s.border};border-radius:8px;
+                     padding:10px 12px;margin-bottom:8px;position:relative;" data-ann-id="${a.id}">
+                    ${isAdmin ? `<button onclick="deleteAnnouncement(${a.id})"
+                        style="position:absolute;top:6px;right:8px;background:none;border:none;
+                               cursor:pointer;color:#94a3b8;font-size:14px;padding:0;"
+                        title="Hapus">✕</button>` : ''}
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                        <span style="font-size:14px;">${s.icon}</span>
+                        <span style="font-size:12px;font-weight:700;color:${s.color};
+                              text-transform:uppercase;">${a.label}</span>
+                        <span style="font-size:11px;color:#94a3b8;margin-left:auto;
+                              ${isAdmin ? 'margin-right:20px;' : ''}">${a.created_fmt}</span>
+                    </div>
+                    <div style="font-size:13px;font-weight:600;color:#1e293b;
+                         margin-bottom:3px;">${a.judul}</div>
+                    <div style="font-size:12px;color:#475569;line-height:1.5;">${a.isi}</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:4px;">
+                        — ${a.posted_nama || a.posted_by}
+                        ${a.expires_at ? `· Expire: ${a.expires_at}` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        })
+        .catch(() => {
+            document.getElementById('ann-list').innerHTML =
+                `<div style="color:#ef4444;font-size:12px;">Gagal memuat pengumuman.</div>`;
+        });
+}
+ 
+function openAddAnnouncement() {
+    const m = document.getElementById('modal-add-ann');
+    m.style.display = 'flex';
+    document.getElementById('ann-judul').value  = '';
+    document.getElementById('ann-isi').value    = '';
+    document.getElementById('ann-label').value  = 'INFO';
+    document.getElementById('ann-expires').value = '';
+}
+function closeAddAnnouncement() {
+    document.getElementById('modal-add-ann').style.display = 'none';
+}
+function submitAnnouncement() {
+    const judul   = document.getElementById('ann-judul').value.trim();
+    const isi     = document.getElementById('ann-isi').value.trim();
+    const label   = document.getElementById('ann-label').value;
+    const expires = document.getElementById('ann-expires').value;
+    if (!judul || !isi) { alert('Judul dan isi wajib diisi!'); return; }
+ 
+    fetch('/api/announcements/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        body: JSON.stringify({ judul, isi, label, expires_hours: expires || null })
+    })
+    .then(r => r.json())
+    .then(d => {
+        closeAddAnnouncement();
+        if (d.status === 'ok') {
+            if (window.toast) window.toast('Pengumuman berhasil diposting!', 'success');
+            loadAnnouncements();
+        } else {
+            if (window.toast) window.toast(d.message, 'error');
+        }
+    });
+}
+function deleteAnnouncement(id) {
+    if (!confirm('Hapus pengumuman ini?')) return;
+    fetch('/api/announcements/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        body: JSON.stringify({ id })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === 'ok') {
+            document.querySelector(`[data-ann-id="${id}"]`)?.remove();
+            if (window.toast) window.toast('Pengumuman dihapus.', 'success');
+        }
+    });
+}
+ 
+{# ════════════════════════════════════════════
+   WATCHLIST — JS
+════════════════════════════════════════════ #}
+const CURRENT_USER = "{{ session.user.username }}";
+const IS_ADMIN     = {{ 'true' if session.user.role == 'admin' else 'false' }};
+ 
+function loadWatchlist() {
+    fetch('/api/watchlist')
+        .then(r => r.json())
+        .then(d => {
+            const el = document.getElementById('wl-list');
+            if (!d.data || d.data.length === 0) {
+                el.innerHTML = `
+                <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:12px 0;">
+                    <i class="fa-solid fa-flag" style="opacity:0.3;"></i><br>
+                    Belum ada order yang di-flag
+                </div>
+                <div style="text-align:center;margin-top:10px;">
+                    <button onclick="openAddWatchlist()"
+                        style="padding:7px 16px;background:#f59e0b;color:#fff;border:none;
+                               border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">
+                        <i class="fa-solid fa-plus"></i> Flag Order
+                    </button>
+                </div>`;
+                return;
+            }
+            el.innerHTML = `
+            <div style="max-height:240px;overflow-y:auto;">
+                ${d.data.map(w => {
+                    const canRemove = IS_ADMIN || w.flagged_by === CURRENT_USER;
+                    const isOwn     = w.flagged_by === CURRENT_USER;
+                    return `
+                    <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;
+                         border-bottom:1px solid var(--border);">
+                        <span style="color:#f59e0b;font-size:14px;margin-top:1px;">⚑</span>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:13px;font-weight:600;color:var(--text);
+                                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                ${w.order_id}
+                                ${isOwn ? '<span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:10px;margin-left:4px;">Saya</span>' : ''}
+                            </div>
+                            ${w.catatan ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px;">${w.catatan}</div>` : ''}
+                            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
+                                ${w.flagged_nama || w.flagged_by} · ${w.flagged_at_fmt}
+                            </div>
+                        </div>
+                        ${canRemove ? `
+                        <button onclick="confirmRemoveWatchlist(this, '${w.order_id}')"
+                            style="background:none;border:none;cursor:pointer;color:#ef4444;
+                                   font-size:15px;padding:2px 4px;flex-shrink:0;line-height:1;"
+                            title="Hapus flag">✕</button>` : ''}
+                    </div>`;
+                }).join('')}
+            </div>
+            <div style="text-align:right;margin-top:10px;">
+                <button onclick="openAddWatchlist()"
+                    style="padding:6px 14px;background:#f59e0b;color:#fff;border:none;
+                           border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">
+                    <i class="fa-solid fa-plus"></i> Flag Order
+                </button>
+            </div>`;
+        })
+        .catch(() => {
+            document.getElementById('wl-list').innerHTML =
+                `<div style="color:#ef4444;font-size:12px;">Gagal memuat watchlist.</div>`;
+        });
+}
+ 
+function openAddWatchlist(prefillOrderId) {
+    const m = document.getElementById('modal-add-wl');
+    m.style.display = 'flex';
+    document.getElementById('wl-order-id').value  = prefillOrderId || '';
+    document.getElementById('wl-catatan').value   = '';
+    const errEl = document.getElementById('wl-error-msg');
+    errEl.style.display = 'none';
+    errEl.textContent   = '';
+    const btn = document.getElementById('wl-btn-submit');
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fa-solid fa-flag"></i> Flag';
+}
+function closeAddWatchlist() {
+    document.getElementById('modal-add-wl').style.display = 'none';
+}
+function submitWatchlist() {
+    const order_id = document.getElementById('wl-order-id').value.trim();
+    const catatan  = document.getElementById('wl-catatan').value.trim();
+    const errEl    = document.getElementById('wl-error-msg');
+
+    errEl.style.display = 'none';
+    errEl.textContent   = '';
+
+    if (!order_id) {
+        errEl.textContent   = '⚠ Order ID wajib diisi.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    const btnSubmit = document.getElementById('wl-btn-submit');
+    btnSubmit.disabled   = true;
+    btnSubmit.innerHTML  = '<i class="fa-solid fa-spinner fa-spin"></i> Memeriksa...';
+
+    fetch('/api/watchlist/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        body: JSON.stringify({ order_id, catatan })
+    })
+    .then(r => r.json())
+    .then(d => {
+        btnSubmit.disabled  = false;
+        btnSubmit.innerHTML = '<i class="fa-solid fa-flag"></i> Flag';
+        if (d.status === 'ok') {
+            closeAddWatchlist();
+            if (window.toast) window.toast(d.message, 'success');
+            loadWatchlist();
+        } else {
+            errEl.textContent   = '⚠ ' + (d.message || 'Gagal menambahkan.');
+            errEl.style.display = 'block';
+        }
+    })
+    .catch(() => {
+        btnSubmit.disabled  = false;
+        btnSubmit.innerHTML = '<i class="fa-solid fa-flag"></i> Flag';
+        errEl.textContent   = '⚠ Koneksi bermasalah. Coba lagi.';
+        errEl.style.display = 'block';
+    });
+}
+function confirmRemoveWatchlist(btn, order_id) {
+    // Jika sudah dalam mode konfirmasi, batalkan
+    if (btn.dataset.confirming === '1') return;
+
+    // Ubah tombol jadi mode konfirmasi inline
+    const origHtml = btn.innerHTML;
+    btn.dataset.confirming = '1';
+    btn.innerHTML = `<span style="font-size:11px;font-weight:600;color:#dc2626;">Hapus?</span>`;
+    btn.style.background = '#fee2e2';
+    btn.style.border = '1px solid #fca5a5';
+    btn.style.borderRadius = '5px';
+    btn.style.padding = '2px 7px';
+
+    // Tombol "Ya"
+    const btnYa = document.createElement('button');
+    btnYa.textContent = 'Ya';
+    btnYa.style.cssText = 'margin-left:4px;background:#dc2626;color:#fff;border:none;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:600;cursor:pointer;';
+    btnYa.onclick = (e) => {
+        e.stopPropagation();
+        removeWatchlist(order_id, btn);
+    };
+
+    // Tombol "Tidak"
+    const btnTidak = document.createElement('button');
+    btnTidak.textContent = 'Tidak';
+    btnTidak.style.cssText = 'margin-left:2px;background:none;border:1px solid #94a3b8;border-radius:4px;padding:1px 6px;font-size:11px;cursor:pointer;color:var(--text-muted);';
+    btnTidak.onclick = (e) => {
+        e.stopPropagation();
+        btn.innerHTML = origHtml;
+        btn.style.cssText = 'background:none;border:none;cursor:pointer;color:#ef4444;font-size:15px;padding:2px 4px;flex-shrink:0;line-height:1;';
+        delete btn.dataset.confirming;
+    };
+
+    btn.appendChild(btnYa);
+    btn.appendChild(btnTidak);
+}
+
+function removeWatchlist(order_id, btn) {
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="font-size:12px;"></i>';
+        btn.disabled = true;
+    }
+    fetch('/api/watchlist/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        body: JSON.stringify({ order_id })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === 'ok') {
+            if (window.toast) window.toast('Flag berhasil dihapus.', 'success');
+            loadWatchlist();
+        } else {
+            if (window.toast) window.toast(d.message || 'Gagal menghapus flag.', 'error');
+            loadWatchlist();
+        }
+    })
+    .catch(() => {
+        if (window.toast) window.toast('Koneksi bermasalah. Coba lagi.', 'error');
+        loadWatchlist();
+    });
+}
+ 
+{# ════════════════════════════════════════════
+   RESPONSIVE GRID
+════════════════════════════════════════════ #}
+(function() {
+    const grid = document.querySelector('.bottom-widget-grid');
+    if (grid && window.innerWidth < 768) {
+        grid.style.gridTemplateColumns = '1fr';
+    }
+})();
+ 
+{# ════════════════════════════════════════════
+   INIT — load semua widget
+════════════════════════════════════════════ #}
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnnouncements();
+    loadWatchlist();
+    // Refresh tiap 60 detik
+    setInterval(loadAnnouncements, 60000);
+    setInterval(loadWatchlist, 60000);
+});
+</script>
+
 <script>
 // ── Data dari Flask ──
 const stoData      = {{ chart_sto | tojson }};

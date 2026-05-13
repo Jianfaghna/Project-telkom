@@ -1,0 +1,172 @@
+/* ============================================================
+   FilterIN - Confirm Modal Styling
+   Untuk dipakai bareng filterin-confirm.js
+   ============================================================ */
+
+.fc-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    z-index: 3000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+.fc-modal-overlay.show {
+    display: flex;
+    opacity: 1;
+    animation: fc-fadein 0.18s ease;
+}
+@keyframes fc-fadein { from {opacity:0} to {opacity:1} }
+
+.fc-modal-panel {
+    background: #fff;
+    border-radius: 14px;
+    width: 460px;
+    max-width: 100%;
+    padding: 32px 28px 22px 28px;
+    text-align: center;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+    transform: translateY(20px) scale(0.96);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+}
+.fc-modal-overlay.show .fc-modal-panel {
+    transform: translateY(0) scale(1);
+}
+
+[data-theme="dark"] .fc-modal-panel {
+    background: #1a2332;
+    color: #e2e8f0;
+}
+
+.fc-icon-wrap {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 18px auto;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    color: #2563eb;
+}
+[data-theme="dark"] .fc-icon-wrap {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+    color: #93c5fd;
+}
+
+.fc-modal-panel h2 {
+    margin: 0 0 8px 0;
+    font-size: 19px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.2px;
+}
+[data-theme="dark"] .fc-modal-panel h2 { color: #f1f5f9; }
+
+.fc-modal-panel p {
+    margin: 0 0 18px 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #475569;
+}
+[data-theme="dark"] .fc-modal-panel p { color: #cbd5e1; }
+.fc-modal-panel p strong { color: #0b3d91; font-weight: 700; }
+[data-theme="dark"] .fc-modal-panel p strong { color: #93c5fd; }
+
+.fc-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    border-radius: 6px;
+    margin-bottom: 18px;
+    text-align: left;
+    font-size: 13px;
+    color: #78350f;
+    line-height: 1.5;
+}
+[data-theme="dark"] .fc-warning {
+    background: #3a2d15;
+    color: #fde68a;
+    border-color: #d97706;
+}
+.fc-warning i { color: #f59e0b; margin-top: 2px; }
+
+.fc-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: stretch;
+}
+.fc-btn {
+    flex: 1;
+    padding: 11px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: inherit;
+}
+.fc-btn-cancel {
+    background: #fff;
+    color: #475569;
+    border: 1.5px solid #e2e8f0;
+}
+.fc-btn-cancel:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+[data-theme="dark"] .fc-btn-cancel {
+    background: #1e293b;
+    color: #cbd5e1;
+    border-color: #475569;
+}
+[data-theme="dark"] .fc-btn-cancel:hover {
+    background: #334155;
+}
+
+.fc-btn-confirm {
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+    color: #fff;
+}
+.fc-btn-confirm:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+}
+.fc-btn-confirm:active { transform: translateY(0); }
+
+.fc-btn-confirm.danger {
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+}
+.fc-btn-confirm.danger:hover {
+    box-shadow: 0 8px 20px rgba(220, 38, 38, 0.4);
+}
+
+.fc-btn-confirm.success {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+.fc-btn-confirm.success:hover {
+    box-shadow: 0 8px 20px rgba(5, 150, 105, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 520px) {
+    .fc-modal-panel { padding: 24px 20px; }
+    .fc-actions { flex-direction: column-reverse; }
+    .fc-btn { width: 100%; }
+}
