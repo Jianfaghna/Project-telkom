@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
 * {
   margin: 0;
@@ -487,6 +487,24 @@ tr:hover { background-color: #f1f1f1; }
 .filter-btn { background-color: #c44e4e; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background-color 0.3s ease; }
 .filter-btn:hover { background-color: #a63e3e; }
 .main-content { display: flex; flex-direction: column; gap: 20px; padding: 0; max-width: 1200px; margin: 0 auto; } /* Padding sudah di content-wrapper */
+
+/* ── Standarisasi heading halaman (berlaku di semua page) ── */
+.main-content h1,
+.dash-wrap h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text, #1e293b);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.3;
+}
+.main-content h1 i,
+.dash-wrap h1 i {
+    font-size: 18px;
+    opacity: 0.75;
+}
 .tabel-controls { display: flex; align-items: center; gap: 15px; }
 .table-container { width: 100%; overflow-x: auto; }
 .table-wrapper { display: block; max-width: 100%; overflow-x: auto; border: 1px solid #ddd; }
@@ -997,10 +1015,10 @@ tr.is-new-row td:nth-child(1) {
 .user-menu::before {
     content: 'AKUN';
     display: block;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 1.2px;
-    color: rgba(255,255,255,0.28);
+    color: rgba(255,255,255,0.35);
     padding: 6px 20px 2px;
 }
 .sidebar.collapsed .user-menu::before {
@@ -1086,10 +1104,10 @@ tr.is-new-row td:nth-child(1) {
 
 /* Label kategori di atas grup menu utama */
 .menu-items .nav-label {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 1.2px;
-    color: rgba(255,255,255,0.28);
+    color: rgba(255,255,255,0.35);
     padding: 14px 20px 4px;
     text-transform: uppercase;
     display: block;

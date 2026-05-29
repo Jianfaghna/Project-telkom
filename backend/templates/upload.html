@@ -35,6 +35,78 @@
     cursor: not-allowed;
 }
 
+/* ── Info box penjelasan ── */
+.upload-info-box {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-left: 4px solid #0ea5e9;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #0c4a6e;
+    line-height: 1.6;
+}
+.upload-info-box.green {
+    background: #f0fdf4;
+    border-color: #86efac;
+    border-left-color: #16a34a;
+    color: #14532d;
+}
+.upload-info-box strong { font-weight: 700; }
+.upload-info-box ul {
+    margin: 6px 0 0 0;
+    padding-left: 18px;
+}
+.upload-info-box ul li { margin-bottom: 2px; }
+[data-theme="dark"] .upload-info-box {
+    background: #0c2840;
+    border-color: #1e4a6e;
+    border-left-color: #38bdf8;
+    color: #7dd3fc;
+}
+[data-theme="dark"] .upload-info-box.green {
+    background: #052e16;
+    border-color: #166534;
+    border-left-color: #4ade80;
+    color: #86efac;
+}
+
+/* ── Steps panduan ── */
+.upload-steps {
+    display: flex;
+    gap: 0;
+    margin-bottom: 24px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    overflow: hidden;
+}
+.upload-step {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-right: 1px solid var(--border, #e2e8f0);
+    font-size: 13px;
+}
+.upload-step:last-child { border-right: none; }
+.step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.step-text strong { display: block; font-size: 12px; font-weight: 700; color: var(--text, #1e293b); }
+.step-text span   { font-size: 11px; color: var(--text-muted, #64748b); }
+[data-theme="dark"] .upload-steps { background: #1a2332; border-color: #2d3748; }
+[data-theme="dark"] .upload-step  { border-color: #2d3748; }
+
 /* ── Upload state feedback ── */
 .upload-card { position: relative; transition: box-shadow 0.2s; }
 
@@ -114,12 +186,49 @@
 <div class="main-content upload-page">
     <div class="upload-header">
         <h1>Update Google Spreadsheet</h1>
-        <p>Pilih file Excel (.xls, .xlsx) lalu tekan tombol Update untuk memproses data.</p>
+        <p>Sinkronkan data dari file Excel hasil ekspor BIMA / KPRO ke Google Spreadsheet Kendala Master.</p>
+    </div>
+
+    <!-- ── Panduan langkah ── -->
+    <div class="upload-steps">
+        <div class="upload-step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+                <strong>Ekspor file</strong>
+                <span>Download Excel dari BIMA atau KPRO</span>
+            </div>
+        </div>
+        <div class="upload-step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+                <strong>Pilih filter</strong>
+                <span>Sesuaikan dengan sumber data (BIMA / KPRO)</span>
+            </div>
+        </div>
+        <div class="upload-step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+                <strong>Upload & update</strong>
+                <span>Data otomatis difilter & dikirim ke Spreadsheet</span>
+            </div>
+        </div>
     </div>
 
     <!-- ── Form Filter BIMA ── -->
     <div class="upload-card" id="card-bima">
         <h2><i class="fa-solid fa-filter" style="color:#2563eb; margin-right:8px;"></i>Filter BIMA</h2>
+
+        <div class="upload-info-box">
+            <strong><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Apa itu Filter BIMA?</strong><br>
+            Digunakan untuk memproses file Excel hasil ekspor dari sistem <strong>BIMA</strong> (Billing Management).
+            Data akan difilter, lalu kolom yang tidak diperlukan dihapus, dan hasilnya dikirim ke sheet
+            <strong>BIMA</strong> di Google Spreadsheet.<br>
+            <ul>
+                <li>Sumber file: ekspor dari aplikasi BIMA (<code>.xlsx</code> / <code>.xls</code>)</li>
+                <li>Kolom wajib ada: <strong>SC Order No / Track ID / CSRM No</strong>, <strong>CRM Order Type</strong>, <strong>Status</strong></li>
+                <li>Proses: filter status aktif → hapus kolom tidak perlu → upload ke sheet</li>
+            </ul>
+        </div>
 
         <div class="form-group">
             <label for="kelas-bima">Pilih Sheet:</label>
@@ -159,6 +268,18 @@
     <!-- ── Form Filter KPRO ── -->
     <div class="upload-card" id="card-kpro">
         <h2><i class="fa-solid fa-file-excel" style="color:#16a34a; margin-right:8px;"></i>Filter KPRO</h2>
+
+        <div class="upload-info-box green">
+            <strong><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Apa itu Filter KPRO?</strong><br>
+            Digunakan untuk memproses file Excel hasil ekspor dari sistem <strong>KPRO</strong> (pengerjaan teknisi).
+            Data akan dicocokkan dengan data kendala aktif, lalu dikirim ke sheet
+            <strong>KPRO</strong> di Google Spreadsheet.<br>
+            <ul>
+                <li>Sumber file: ekspor dari aplikasi KPRO Telkom (<code>.xlsx</code> / <code>.xls</code>)</li>
+                <li>Kolom wajib ada: <strong>Order ID / WO Number</strong>, <strong>Status Pengerjaan</strong></li>
+                <li>Proses: filter data relevan → sinkron status teknisi → upload ke sheet</li>
+            </ul>
+        </div>
 
         <div class="form-group">
             <label for="kelas-kpro">Pilih Sheet:</label>

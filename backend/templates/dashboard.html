@@ -187,19 +187,65 @@
 .trend-up   { color: #16a34a; font-size: 12px; font-weight: 600; }
 .trend-down { color: #dc2626; font-size: 12px; font-weight: 600; }
 
-/* ── New rows notif ── */
+/* ── New rows badge di stat card ── */
+.sc-new-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.22);
+    border: 1px solid rgba(255,255,255,0.38);
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 7px;
+    animation: pulse-badge 2s ease-in-out infinite;
+}
+@keyframes pulse-badge {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:0.75; transform:scale(0.97); }
+}
+
+/* ── New rows notif banner ── */
 .new-rows-banner {
     background: linear-gradient(135deg, #1d4ed8, #3b82f6);
     color: #fff;
-    border-radius: 8px;
-    padding: 12px 18px;
+    border-radius: 10px;
+    padding: 14px 18px;
     display: flex;
     align-items: center;
     gap: 12px;
     margin-bottom: 18px;
+    box-shadow: 0 4px 16px rgba(29,78,216,0.3);
+    animation: slidedown 0.4s ease;
     font-size: 14px;
 }
+}
+@keyframes slidedown {
+    from { opacity:0; transform:translateY(-12px); }
+    to   { opacity:1; transform:translateY(0); }
+}
 .new-rows-banner a { color: #fff; font-weight: 700; text-decoration: underline; }
+.new-rows-banner .nrb-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.4);
+    color: #fff;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.new-rows-banner .nrb-btn:hover { background: rgba(255,255,255,0.35); color: #fff; text-decoration: none; }
+.new-rows-banner .nrb-dismiss {
+    background: none; border: none; color: rgba(255,255,255,0.7);
+    font-size: 16px; cursor: pointer; padding: 0 4px; line-height:1;
+}
+.new-rows-banner .nrb-dismiss:hover { color: #fff; }
 
 .top-count {
     font-weight: 700;
@@ -208,6 +254,12 @@
 /* Dark mode */
 [data-theme="dark"] .chart-card { background: var(--surface); border-color: var(--border); }
 [data-theme="dark"] .chart-card-header { color: var(--text); border-color: var(--border); }
+[data-theme="dark"] #sto-legend > div {
+    background: #111827 !important;
+    border-color: #2d3748 !important;
+}
+[data-theme="dark"] #sto-legend > div span:nth-child(2) { color: #e2e8f0 !important; }
+[data-theme="dark"] #sto-legend > div span:nth-child(3) { color: #94a3b8 !important; }
 [data-theme="dark"] .top-table th {
     background: var(--surface-2) !important;
     color: var(--text-muted) !important;
@@ -241,12 +293,20 @@
 
     <!-- New rows banner -->
     {% if unseen_new_rows and unseen_new_rows > 0 %}
-    <div class="new-rows-banner">
-        <i class="fa-solid fa-bell fa-lg"></i>
-        <span>Ada <strong>{{ unseen_new_rows }} data baru</strong> dari sinkronisasi BIMA terakhir.</span>
-        <a href="{{ url_for('kendala_master', new_only='1') }}" style="margin-left:auto;">
-            Lihat Data Baru <i class="fa-solid fa-arrow-right"></i>
+    <div class="new-rows-banner" id="new-rows-banner">
+        <i class="fa-solid fa-bell fa-beat" style="font-size:18px; flex-shrink:0;"></i>
+        <div>
+            <div style="font-weight:700; font-size:14px;">
+                {{ unseen_new_rows }} data baru dari sinkronisasi BIMA!
+            </div>
+            <div style="font-size:12px; opacity:0.85; margin-top:2px;">
+                Data ini belum kamu lihat — klik untuk langsung ke baris yang baru masuk.
+            </div>
+        </div>
+        <a href="{{ url_for('kendala_master', new_only='1') }}" class="nrb-btn">
+            <i class="fa-solid fa-arrow-right"></i> Lihat Data Baru
         </a>
+        <button class="nrb-dismiss" onclick="document.getElementById('new-rows-banner').remove()" title="Tutup">✕</button>
     </div>
     {% endif %}
 
@@ -280,12 +340,24 @@
 
     <!-- Stat cards -->
     <div class="stat-grid">
-        <a href="{{ url_for('kendala_master') }}" class="stat-card sc-blue">
+        <a href="{{ url_for('kendala_master', new_only='1') if (unseen_new_rows and unseen_new_rows > 0) else url_for('kendala_master') }}"
+           class="stat-card sc-blue">
             <div class="sc-label">Total Order</div>
             <div class="sc-value" id="live-total">{{ total }}</div>
             <div class="sc-sub">Semua data Kendala Master</div>
+            {% if unseen_new_rows and unseen_new_rows > 0 %}
+            <div class="sc-new-badge">
+                <i class="fa-solid fa-bolt"></i> +{{ unseen_new_rows }} baru hari ini
+            </div>
+            {% endif %}
             <i class="fa-solid fa-clipboard-list sc-icon"></i>
-            <div class="sc-footer"><i class="fa-solid fa-arrow-right"></i> Lihat Semua Data</div>
+            <div class="sc-footer">
+                {% if unseen_new_rows and unseen_new_rows > 0 %}
+                <i class="fa-solid fa-arrow-right"></i> Lihat Data Baru
+                {% else %}
+                <i class="fa-solid fa-arrow-right"></i> Lihat Semua Data
+                {% endif %}
+            </div>
         </a>
         <a href="{{ url_for('kendala_master', feedback='DONE TATI') }}" class="stat-card sc-green">
             <div class="sc-label">Done TATI</div>
@@ -317,9 +389,11 @@
                 <i class="fa-solid fa-chart-bar"></i> Kendala Aktif per STO
             </div>
             <div class="chart-card-body">
-                <div class="chart-canvas-wrap" style="height:220px;">
+                <div class="chart-canvas-wrap" style="height:200px;">
                     <canvas id="chartSto"></canvas>
                 </div>
+                <!-- Legend STO -->
+                <div id="sto-legend" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:5px; padding:0 2px;"></div>
             </div>
         </div>
         <div class="chart-card">
@@ -341,9 +415,11 @@
                 <i class="fa-solid fa-hourglass-half"></i> Distribusi Umur Kendala (WO Aktif)
             </div>
             <div class="chart-card-body">
-                <div class="chart-canvas-wrap" style="height:200px;">
+                <div class="chart-canvas-wrap" style="height:180px;">
                     <canvas id="chartUmur"></canvas>
                 </div>
+                <!-- Legend Umur Kendala -->
+                <div id="umur-legend" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:5px; padding:0 2px;"></div>
             </div>
         </div>
         <div class="chart-card">
@@ -868,6 +944,51 @@ const baseOpts = {
     plugins: { legend: { labels: { color: textColor(), font: { size: 11 } } } },
 };
 
+// ── Nama lengkap STO ──
+const STO_FULL = {
+    'MGE': 'Magelang Kota',   'MTY': 'Magelang Timur',
+    'KAK': 'Kaliangkrik',     'KBM': 'Kebumen Kota',
+    'GOM': 'Gombong',         'KTW': 'Kutowinangun',
+    'TEM': 'Temanggung',      'PRN': 'Parakan',
+    'WOS': 'Wonosobo',
+    'KTA': 'Kutoarjo',        'PWJ': 'Purworejo',
+    'SWT': 'Sawit',           'MUN': 'Muntilan',
+};
+const STO_REGION = {
+    'MGE':'Magelang','MTY':'Magelang',
+    'KAK':'Kebumen','KBM':'Kebumen','GOM':'Kebumen','KTW':'Kebumen',
+    'TEM':'Temanggung','PRN':'Temanggung',
+    'WOS':'Wonosobo',
+    'KTA':'Purworejo','PWJ':'Purworejo',
+    'SWT':'Muntilan','MUN':'Muntilan',
+};
+const REGION_COLORS = {
+    'Magelang':'#3b82f6', 'Kebumen':'#22c55e',
+    'Temanggung':'#f59e0b', 'Wonosobo':'#ef4444',
+    'Purworejo':'#8b5cf6', 'Muntilan':'#06b6d4',
+};
+
+function renderStoLegend() {
+    const el = document.getElementById('sto-legend');
+    if (!el || !stoData.labels || stoData.labels.length === 0) return;
+    el.innerHTML = stoData.labels.map((lbl, i) => {
+        const full   = STO_FULL[lbl] || lbl;
+        const region = STO_REGION[lbl] || '';
+        const color  = COLORS[i % COLORS.length];
+        return `<div title="${region ? region + ' — ' : ''}${full}"
+                     style="display:inline-flex;align-items:center;gap:5px;
+                            background:var(--surface-2,#f8fafc);
+                            border:1px solid var(--border,#e2e8f0);
+                            border-radius:20px;padding:3px 10px 3px 7px;
+                            cursor:default;transition:box-shadow .15s;">
+                    <span style="width:9px;height:9px;border-radius:50%;
+                                 background:${color};flex-shrink:0;"></span>
+                    <span style="font-size:11px;font-weight:700;color:var(--text,#1e293b);">${lbl}</span>
+                    <span style="font-size:11px;color:var(--text-muted,#64748b);">${full}</span>
+                </div>`;
+    }).join('');
+}
+
 // ── 1. Bar chart STO ──
 const ctxSto = document.getElementById('chartSto').getContext('2d');
 const chartSto = new Chart(ctxSto, {
@@ -884,13 +1005,26 @@ const chartSto = new Chart(ctxSto, {
     },
     options: {
         ...baseOpts,
-        plugins: { ...baseOpts.plugins, legend: { display: false } },
+        plugins: {
+            ...baseOpts.plugins,
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    title: (items) => {
+                        const lbl = items[0].label;
+                        return `${lbl} — ${STO_FULL[lbl] || lbl}`;
+                    },
+                    label: (item) => ` ${item.raw} order aktif`,
+                }
+            }
+        },
         scales: {
             x: { ticks: { color: textColor() }, grid: { color: gridColor() } },
             y: { ticks: { color: textColor() }, grid: { color: gridColor() }, beginAtZero: true },
         }
     }
 });
+renderStoLegend();
 
 // ── 2. Doughnut chart Feedback ASO ──
 const ctxFb = document.getElementById('chartFeedback').getContext('2d');
@@ -919,6 +1053,52 @@ const UMUR_COLORS = {
     'F. >3 MINGGU' : '#dc2626',
     'G. >1 BULAN'  : '#7f1d1d',
 };
+// Deskripsi lengkap tiap kategori
+const UMUR_DESC = {
+    'A. <1 HARI'   : { kode:'A', durasi:'< 1 hari',      ket:'Baru masuk'   },
+    'B. 1-3 HARI'  : { kode:'B', durasi:'1 – 3 hari',    ket:'Awal proses'  },
+    'C. 4-7 HARI'  : { kode:'C', durasi:'4 – 7 hari',    ket:'Perlu atensi' },
+    'D. 1-2 MINGGU': { kode:'D', durasi:'1 – 2 minggu',  ket:'Tertunda'     },
+    'E. 2-3 MINGGU': { kode:'E', durasi:'2 – 3 minggu',  ket:'Kritis'       },
+    'F. >3 MINGGU' : { kode:'F', durasi:'> 3 minggu',    ket:'Sangat kritis'},
+    'G. >1 BULAN'  : { kode:'G', durasi:'> 1 bulan',     ket:'Eskalasi!'    },
+};
+// Urutan tetap A→G
+const UMUR_ORDER_ALL = [
+    'A. <1 HARI','B. 1-3 HARI','C. 4-7 HARI',
+    'D. 1-2 MINGGU','E. 2-3 MINGGU','F. >3 MINGGU','G. >1 BULAN'
+];
+
+function renderUmurLegend() {
+    const el = document.getElementById('umur-legend');
+    if (!el) return;
+    // Tampilkan semua 7 kategori sebagai referensi, yang ada di data diberi count
+    const countMap = {};
+    (umurData.labels || []).forEach((l, i) => { countMap[l] = umurData.values[i]; });
+
+    el.innerHTML = UMUR_ORDER_ALL.map(key => {
+        const color = UMUR_COLORS[key];
+        const desc  = UMUR_DESC[key];
+        const count = countMap[key];
+        const hasData = count !== undefined;
+        const opacity = hasData ? '1' : '0.38';
+        return `<div title="${desc.durasi} — ${desc.ket}"
+                     style="display:inline-flex;align-items:center;gap:5px;
+                            background:var(--surface-2,#f8fafc);
+                            border:1px solid var(--border,#e2e8f0);
+                            border-radius:20px;padding:3px 10px 3px 7px;
+                            cursor:default;opacity:${opacity};">
+                    <span style="width:9px;height:9px;border-radius:50%;
+                                 background:${color};flex-shrink:0;"></span>
+                    <span style="font-size:11px;font-weight:700;color:var(--text,#1e293b);">${desc.kode}</span>
+                    <span style="font-size:11px;color:var(--text-muted,#64748b);">${desc.durasi}</span>
+                    ${hasData ? `<span style="font-size:10px;font-weight:700;
+                                       background:${color}22;color:${color};
+                                       border-radius:9999px;padding:0 5px;
+                                       min-width:18px;text-align:center;">${count}</span>` : ''}
+                </div>`;
+    }).join('');
+}
 const ctxUmur = document.getElementById('chartUmur').getContext('2d');
 const chartUmur = new Chart(ctxUmur, {
     type: 'bar',
@@ -934,13 +1114,26 @@ const chartUmur = new Chart(ctxUmur, {
     },
     options: {
         ...baseOpts,
-        plugins: { ...baseOpts.plugins, legend: { display: false } },
+        plugins: {
+            ...baseOpts.plugins,
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    title: (items) => {
+                        const lbl = items[0].label;
+                        return `${lbl} — ${(UMUR_DESC[lbl]||{}).ket||''}`;
+                    },
+                    label: (item) => ` ${item.raw} order aktif`,
+                }
+            }
+        },
         scales: {
             x: { ticks: { color: textColor(), font: { size: 10 } }, grid: { color: gridColor() } },
             y: { ticks: { color: textColor() }, grid: { color: gridColor() }, beginAtZero: true },
         }
     }
 });
+renderUmurLegend();
 
 // ── 4. Line chart Trend 14 hari ──
 const ctxTrend = document.getElementById('chartTrend').getContext('2d');
@@ -1093,6 +1286,67 @@ function updateStats() {
             document.getElementById('live-done').innerText    = d.done;
             document.getElementById('live-pending').innerText = d.pending;
             document.getElementById('live-unsc').innerText    = d.unsc;
+
+            // ── Real-time new-data notification ──
+            const unseen = d.unseen_new_rows || 0;
+
+            // 1. Update badge on Total Order card
+            const scBlue = document.querySelector('.stat-card.sc-blue');
+            if (scBlue) {
+                let badge = scBlue.querySelector('.sc-new-badge');
+                let footer = scBlue.querySelector('.sc-footer');
+                if (unseen > 0) {
+                    // Update card href to filter new_only=1
+                    scBlue.href = '/kendala_master?new_only=1';
+                    if (!badge) {
+                        badge = document.createElement('div');
+                        badge.className = 'sc-new-badge';
+                        // Insert before the icon
+                        const icon = scBlue.querySelector('.sc-icon');
+                        if (icon) scBlue.insertBefore(badge, icon);
+                        else scBlue.appendChild(badge);
+                    }
+                    badge.innerHTML = '<i class="fa-solid fa-bolt"></i> +' + unseen + ' baru hari ini';
+                    if (footer) footer.innerHTML = '<i class="fa-solid fa-arrow-right"></i> Lihat Data Baru';
+                } else {
+                    // Remove badge if count drops to 0
+                    if (badge) badge.remove();
+                    scBlue.href = '/kendala_master';
+                    if (footer) footer.innerHTML = '<i class="fa-solid fa-arrow-right"></i> Lihat Semua Data';
+                }
+            }
+
+            // 2. Show / update the banner at top of page
+            if (unseen > 0) {
+                let banner = document.getElementById('new-rows-banner');
+                if (!banner) {
+                    // Create banner dynamically (mirrors the Jinja2 version)
+                    banner = document.createElement('div');
+                    banner.id = 'new-rows-banner';
+                    banner.className = 'new-rows-banner';
+                    banner.innerHTML =
+                        '<i class="fa-solid fa-bell nrb-icon"></i>' +
+                        '<div class="nrb-text">' +
+                            '<div style="font-weight:700; font-size:14px;">' +
+                                '<span id="nrb-count">' + unseen + '</span> data baru dari sinkronisasi BIMA!' +
+                            '</div>' +
+                            '<div style="font-size:12px; opacity:0.85; margin-top:2px;">' +
+                                'Data ini belum kamu lihat — klik untuk langsung ke baris yang baru masuk.' +
+                            '</div>' +
+                        '</div>' +
+                        '<a href="/kendala_master?new_only=1" class="nrb-btn">' +
+                            '<i class="fa-solid fa-arrow-right"></i> Lihat Data Baru' +
+                        '</a>' +
+                        '<button class="nrb-dismiss" onclick="document.getElementById(\'new-rows-banner\').remove()" title="Tutup">✕</button>';
+                    // Insert as first child inside dash-wrap
+                    const wrap = document.querySelector('.dash-wrap');
+                    if (wrap) wrap.insertBefore(banner, wrap.firstChild);
+                } else {
+                    // Update count in existing banner
+                    const cntEl = banner.querySelector('#nrb-count');
+                    if (cntEl) cntEl.textContent = unseen;
+                }
+            }
         })
         .catch(() => {});
 }

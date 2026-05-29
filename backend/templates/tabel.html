@@ -3,66 +3,89 @@
 
 {% block head_extra %}
 <style>
-/* ── Dark mode patches ── */
-[data-theme="dark"] .main-content h1 { color: var(--text, #e2e8f0); }
+/* ════════════════════════════════════════════
+   STICKY HEADER — override global overflow
+   ════════════════════════════════════════════ */
+.main-container  { overflow-x: visible !important; }
+.content-wrapper { overflow:   visible !important; }
 
-[data-theme="dark"] .tabel-controls label { color: var(--text-muted, #94a3b8); }
-[data-theme="dark"] .tabel-controls select {
-    background: var(--surface-2, #111827) !important;
-    border-color: var(--border-strong, #475569) !important;
-    color: var(--text, #e2e8f0) !important;
+.table-wrapper {
+    overflow-x: auto  !important;
+    overflow-y: visible !important;
+    max-height: none  !important;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 6px;
 }
-
-/* Tabel dari pandas .to_html() pakai class="data" */
-[data-theme="dark"] .table-wrapper { border-color: var(--border, #2d3748) !important; }
-[data-theme="dark"] .table-wrapper table {
-    background: var(--surface, #1a2332) !important;
-    color: var(--text, #e2e8f0) !important;
+table.data thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: #c0392b !important;
+    color: #fff !important;
+    white-space: nowrap;
+    padding: 10px 12px;
+    font-size: 13px;
+    border-right: 1px solid rgba(255,255,255,0.15);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
 }
-[data-theme="dark"] .table-wrapper thead th {
+[data-theme="dark"] table.data thead th {
     background: #0b3d91 !important;
     color: #fff !important;
-    border-color: var(--border, #2d3748) !important;
 }
-[data-theme="dark"] .table-wrapper tbody td {
+
+/* ════════════════════════════
+   TABLE BODY STYLING
+   ════════════════════════════ */
+table.data {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+}
+table.data tbody td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    border-right: 1px solid var(--border, #f1f5f9);
+    white-space: nowrap;
+    color: var(--text, #334155);
+}
+table.data tbody tr:nth-child(even) td {
+    background: #f8fafc;
+}
+table.data tbody tr:hover td {
+    background: #eff6ff !important;
+    color: #1d4ed8 !important;
+}
+[data-theme="dark"] table.data tbody td {
     background: var(--surface, #1a2332) !important;
     color: var(--text, #e2e8f0) !important;
     border-color: var(--border, #2d3748) !important;
 }
-[data-theme="dark"] .table-wrapper tbody tr:nth-child(even) td {
+[data-theme="dark"] table.data tbody tr:nth-child(even) td {
     background: var(--surface-2, #111827) !important;
 }
-[data-theme="dark"] .table-wrapper tbody tr:hover td {
+[data-theme="dark"] table.data tbody tr:hover td {
     background: #22304a !important;
     color: #93c5fd !important;
 }
-/* Override inline style dari pandas */
-[data-theme="dark"] th, [data-theme="dark"] td {
-    border-color: var(--border, #2d3748) !important;
+
+/* ════════════════════════════
+   HIGHLIGHT hasil pencarian
+   ════════════════════════════ */
+mark.hl {
+    background: #fef08a;
+    color: #713f12;
+    border-radius: 2px;
+    padding: 0 2px;
+    font-weight: 600;
+}
+[data-theme="dark"] mark.hl {
+    background: #854d0e;
+    color: #fef08a;
 }
 
-/* Pagination jump input */
-[data-theme="dark"] #jumpPageInput {
-    background: var(--surface-2, #111827) !important;
-    border-color: var(--border-strong, #475569) !important;
-    color: var(--text, #e2e8f0) !important;
-}
-[data-theme="dark"] .pagination-controls a,
-[data-theme="dark"] .pagination-controls span { color: var(--text, #e2e8f0); }
-[data-theme="dark"] .pagination-info { color: var(--text-muted, #94a3b8); }
-[data-theme="dark"] .pagination-controls .disabled { color: var(--text-muted, #64748b); }
-
-/* Empty state */
-[data-theme="dark"] .tabel-empty { color: var(--text-muted, #94a3b8) !important; }
-
-/* Alert */
-[data-theme="dark"] .alert-danger {
-    background: #3b1111 !important;
-    border-color: #b91c1c !important;
-    color: #fca5a5 !important;
-}
-
-/* Tabel controls */
+/* ════════════════════════════
+   CONTROLS BAR
+   ════════════════════════════ */
 .tabel-controls {
     background: var(--surface, #fff);
     padding: 12px 16px;
@@ -71,10 +94,16 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    flex-wrap: wrap;
 }
-.tabel-controls label { font-weight: 600; font-size: 13px; color: var(--text-muted, #555); }
+.tabel-controls label {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-muted, #555);
+    white-space: nowrap;
+}
 .tabel-controls select {
     padding: 8px 12px;
     border: 1px solid var(--border, #ccc);
@@ -84,38 +113,181 @@
     color: var(--text, #333);
     cursor: pointer;
 }
+
+/* Search bar */
+.tabel-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-wrap: nowrap;
+}
+.tabel-search input[type="text"] {
+    padding: 8px 12px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 6px;
+    font-size: 13px;
+    width: 240px;
+    background: var(--surface, #fff);
+    color: var(--text, #333);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.tabel-search input[type="text"]:focus {
+    border-color: #c0392b;
+    box-shadow: 0 0 0 3px rgba(192,57,43,0.12);
+}
+.tabel-search button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: opacity 0.15s;
+}
+.btn-search-go  { background: #c0392b; color: #fff; }
+.btn-search-clr { background: var(--surface-2, #f1f5f9); color: var(--text-muted, #64748b); border: 1px solid var(--border, #e0e0e0); }
+.btn-search-go:hover  { opacity: 0.88; }
+.btn-search-clr:hover { opacity: 0.75; }
+
+/* Result info banner */
+.search-result-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+.search-result-info.no-result {
+    background: #fff7ed;
+    border-color: #fed7aa;
+    color: #9a3412;
+}
+[data-theme="dark"] .search-result-info {
+    background: #1e3a5f;
+    border-color: #1d4ed8;
+    color: #93c5fd;
+}
+[data-theme="dark"] .search-result-info.no-result {
+    background: #431407;
+    border-color: #9a3412;
+    color: #fdba74;
+}
+
+/* ════════════════════════════
+   DARK MODE PATCHES
+   ════════════════════════════ */
+[data-theme="dark"] .main-content h1 { color: var(--text, #e2e8f0); }
+[data-theme="dark"] .tabel-controls label { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .tabel-controls select,
+[data-theme="dark"] .tabel-search input[type="text"] {
+    background: var(--surface-2, #111827) !important;
+    border-color: var(--border-strong, #475569) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .btn-search-clr {
+    background: var(--surface-2, #1e293b);
+    color: var(--text-muted, #94a3b8);
+    border-color: var(--border, #334155);
+}
+[data-theme="dark"] .tabel-controls { border-color: var(--border, #2d3748); }
+[data-theme="dark"] .table-wrapper   { border-color: var(--border, #2d3748) !important; }
+
+/* Pagination */
+[data-theme="dark"] #jumpPageInput {
+    background: var(--surface-2, #111827) !important;
+    border-color: var(--border-strong, #475569) !important;
+    color: var(--text, #e2e8f0) !important;
+}
+[data-theme="dark"] .pagination-controls a,
+[data-theme="dark"] .pagination-controls span { color: var(--text, #e2e8f0); }
+[data-theme="dark"] .pagination-info { color: var(--text-muted, #94a3b8); }
+[data-theme="dark"] .pagination-controls .disabled { color: var(--text-muted, #64748b); }
+[data-theme="dark"] .tabel-empty { color: var(--text-muted, #94a3b8) !important; }
+[data-theme="dark"] .alert-danger {
+    background: #3b1111 !important;
+    border-color: #b91c1c !important;
+    color: #fca5a5 !important;
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="main-content">
-    <h1 style="color:var(--text,#1e293b);"><i class="fa-solid fa-table"></i> Data Spreadsheet</h1>
+    <h1 style="color:var(--text,#1e293b); margin-bottom:16px;">
+        <i class="fa-solid fa-table"></i> Data Spreadsheet
+    </h1>
 
-    <!-- Pilih Kelas -->
+    <!-- ── Controls: sheet selector + search bar ── -->
     <div class="tabel-controls">
+
         <label for="kelas"><i class="fa-solid fa-layer-group"></i> Pilih Sheet:</label>
-        <form method="get" action="{{ url_for('tabel') }}" style="margin:0;">
-            <select name="kelas" id="kelas" onchange="this.form.submit()">
-                <option value="04" {% if kelas == '04' %}selected{% endif %}>BIMA MASTER</option>
-                <option value="05" {% if kelas == '05' %}selected{% endif %}>KPRO</option>
-                <option value="06" {% if kelas == '06' %}selected{% endif %}>BIMA</option>
-            </select>
-        </form>
-        {% if pagination and pagination.total_rows > 0 %}
-        <span style="font-size:13px; color:var(--text-muted,#64748b); margin-left:auto;">
-            <i class="fa-solid fa-database"></i> {{ pagination.total_rows }} baris data
+        <select name="kelas" id="kelas" onchange="submitSearch()">
+            <option value="04" {% if kelas == '04' %}selected{% endif %}>BIMA MASTER</option>
+            <option value="05" {% if kelas == '05' %}selected{% endif %}>KPRO</option>
+            <option value="06" {% if kelas == '06' %}selected{% endif %}>BIMA</option>
+        </select>
+
+        {% if total_all_rows > 0 %}
+        <span style="font-size:12px; color:var(--text-muted,#94a3b8);">
+            <i class="fa-solid fa-database"></i> {{ total_all_rows }} total baris
         </span>
         {% endif %}
+
+        <!-- Search -->
+        <div class="tabel-search">
+            <label style="margin:0;"><i class="fa-solid fa-magnifying-glass"></i> Cari:</label>
+            <input type="text" id="searchInput"
+                   placeholder="Ketik ORDER ID, WONUM, nama..."
+                   value="{{ search_query }}"
+                   onkeydown="if(event.key==='Enter') submitSearch()">
+            <button class="btn-search-go" onclick="submitSearch()">
+                <i class="fa-solid fa-search"></i> Cari
+            </button>
+            {% if search_query %}
+            <button class="btn-search-clr" onclick="clearSearch()">
+                <i class="fa-solid fa-xmark"></i> Reset
+            </button>
+            {% endif %}
+        </div>
     </div>
 
-    <!-- Tabel -->
+    <!-- ── Search result info ── -->
+    {% if search_query %}
+        {% if pagination and pagination.total_rows > 0 %}
+        <div class="search-result-info">
+            <i class="fa-solid fa-check-circle"></i>
+            Ditemukan <strong>{{ pagination.total_rows }}</strong> baris
+            yang cocok dengan "<strong>{{ search_query }}</strong>"
+            — dari total {{ total_all_rows }} baris data.
+        </div>
+        {% else %}
+        <div class="search-result-info no-result">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            Tidak ada data yang cocok dengan "<strong>{{ search_query }}</strong>".
+            <a href="{{ url_for('tabel', kelas=kelas) }}" style="margin-left:8px; color:inherit; text-decoration:underline;">Tampilkan semua</a>
+        </div>
+        {% endif %}
+    {% endif %}
+
+    <!-- ── Tabel ── -->
     <div class="table-container">
         {% if error %}
             <div class="alert-danger" style="padding:14px; background:#fee2e2; color:#991b1b; border-radius:6px; border:1px solid #fca5a5;">
                 <i class="fa-solid fa-triangle-exclamation"></i> {{ error }}
             </div>
         {% elif data and data[kelas] %}
-            <div class="table-wrapper" style="overflow-x:auto; border:1px solid var(--border,#ddd); border-radius:6px;">
+            <div class="table-wrapper">
                 {{ data[kelas]|safe }}
             </div>
         {% else %}
@@ -126,17 +298,18 @@
         {% endif %}
     </div>
 
-    <!-- Pagination -->
+    <!-- ── Pagination ── -->
     {% if pagination and pagination.total_rows > 0 %}
     <div class="pagination-container" style="margin-top:16px;">
         <div class="pagination-info" style="color:var(--text-muted,#555);">
             Showing {{ pagination.start_index + 1 }} to
-            {{ min(pagination.start_index + pagination.per_page, pagination.total_rows) }}
+            {{ [pagination.start_index + pagination.per_page, pagination.total_rows]|min }}
             of {{ pagination.total_rows }} entries
+            {% if search_query %}<span style="color:#c0392b;"> (hasil pencarian)</span>{% endif %}
         </div>
         <div class="pagination-controls">
             {% if pagination.current_page > 1 %}
-                <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page - 1) }}">Previous</a>
+                <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page - 1, search=search_query) }}">Previous</a>
             {% else %}
                 <span class="disabled">Previous</span>
             {% endif %}
@@ -145,40 +318,89 @@
             {% for pn in range(1, pagination.total_pages + 1) %}
                 {% if pn==1 or pn==pagination.total_pages or (pn>=pagination.current_page-2 and pn<=pagination.current_page+2) %}
                     {% set ns.ep = false %}
-                    {% if pn == pagination.current_page %}<span class="active">{{ pn }}</span>
-                    {% else %}<a href="{{ url_for('tabel', kelas=kelas, p=pn) }}">{{ pn }}</a>{% endif %}
+                    {% if pn == pagination.current_page %}
+                        <span class="active">{{ pn }}</span>
+                    {% else %}
+                        <a href="{{ url_for('tabel', kelas=kelas, p=pn, search=search_query) }}">{{ pn }}</a>
+                    {% endif %}
                 {% else %}
                     {% if not ns.ep %}<span class="ellipsis">...</span>{% set ns.ep = true %}{% endif %}
                 {% endif %}
             {% endfor %}
 
             {% if pagination.current_page < pagination.total_pages %}
-                <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page + 1) }}">Next</a>
+                <a href="{{ url_for('tabel', kelas=kelas, p=pagination.current_page + 1, search=search_query) }}">Next</a>
             {% else %}
                 <span class="disabled">Next</span>
             {% endif %}
 
-            <div style="display:inline-flex; align-items:center; gap:5px; margin-left:15px; border-left:1px solid var(--border,#ccc); padding-left:15px;">
+            <div style="display:inline-flex; align-items:center; gap:5px; margin-left:15px;
+                        border-left:1px solid var(--border,#ccc); padding-left:15px;">
                 <span style="font-size:13px; color:var(--text-muted,#555);">Ke Hal:</span>
                 <input type="number" id="jumpPageInput" min="1" max="{{ pagination.total_pages }}"
-                       style="width:50px; padding:4px; border:1px solid var(--border,#ccc); border-radius:4px; text-align:center; background:var(--surface,#fff); color:var(--text,#333);"
+                       style="width:50px; padding:4px; border:1px solid var(--border,#ccc);
+                              border-radius:4px; text-align:center;
+                              background:var(--surface,#fff); color:var(--text,#333);"
                        onkeypress="if(event.key==='Enter') jumpToPage()">
                 <button onclick="jumpToPage()"
-                        style="padding:4px 10px; background:#2c3e50; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">Go</button>
+                        style="padding:4px 10px; background:#c0392b; color:white;
+                               border:none; border-radius:4px; cursor:pointer; font-size:12px;">Go</button>
             </div>
         </div>
     </div>
     {% endif %}
 </div>
+{% endblock %}
 
+{% block scripts_extra %}
 <script>
+/* ── Submit search (mempertahankan kelas yang dipilih) ── */
+function submitSearch() {
+    const kelas  = document.getElementById('kelas').value;
+    const search = document.getElementById('searchInput').value.trim();
+    const url    = new URL(window.location.href);
+    url.searchParams.set('kelas',  kelas);
+    url.searchParams.set('search', search);
+    url.searchParams.set('p',      '1');   // reset ke halaman 1
+    window.location.href = url.toString();
+}
+
+function clearSearch() {
+    const kelas = document.getElementById('kelas').value;
+    window.location.href = '/tabel?kelas=' + kelas;
+}
+
 function jumpToPage() {
     var p = document.getElementById('jumpPageInput').value;
-    if (p) {
-        var url = new URL(window.location.href);
-        url.searchParams.set('p', p);
-        window.location.href = url.toString();
-    }
+    if (!p) return;
+    var url = new URL(window.location.href);
+    url.searchParams.set('p', p);
+    window.location.href = url.toString();
 }
+
+/* ── Highlight kata kunci di dalam sel tabel ── */
+(function highlightKeyword() {
+    const query = {{ search_query|tojson }};
+    if (!query) return;
+    const keyword = query.toLowerCase();
+
+    document.querySelectorAll('table.data tbody td').forEach(function(td) {
+        const text = td.textContent;
+        const lower = text.toLowerCase();
+        const idx = lower.indexOf(keyword);
+        if (idx === -1) return;
+        // Ganti teks dengan mark highlight
+        const before = text.substring(0, idx);
+        const match  = text.substring(idx, idx + keyword.length);
+        const after  = text.substring(idx + keyword.length);
+        td.innerHTML = escHtml(before) +
+                       '<mark class="hl">' + escHtml(match) + '</mark>' +
+                       escHtml(after);
+    });
+
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+})();
 </script>
 {% endblock %}

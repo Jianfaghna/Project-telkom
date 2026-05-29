@@ -11,12 +11,16 @@
 
     [data-theme="dark"] .filter-card select,
     [data-theme="dark"] .filter-card input[type="date"],
-    [data-theme="dark"] .filter-card input[type="text"] {
+    [data-theme="dark"] .filter-card input[type="text"],
+    [data-theme="dark"] .km-filter-grid .filter-item select,
+    [data-theme="dark"] .km-filter-grid .filter-item input,
+    [data-theme="dark"] .km-filter-search input {
         background: var(--surface-2, #1a2332) !important;
         color: var(--text, #e2e8f0) !important;
         border: 1px solid var(--border-strong, #334155) !important;
     }
-    [data-theme="dark"] .filter-card select option {
+    [data-theme="dark"] .filter-card select option,
+    [data-theme="dark"] .km-filter-grid .filter-item select option {
         background: #1a2332;
         color: #e2e8f0;
     }
@@ -24,6 +28,9 @@
         background: #0c2a4a !important;
         color: #7dd3fc !important;
     }
+    [data-theme="dark"] .km-filter-grid .filter-item label { color: var(--text-muted, #94a3b8); }
+    [data-theme="dark"] .km-filter-search .search-wrap i { color: #475569; }
+    [data-theme="dark"] .toolbar-btn.mode-cepat-btn::after { background: #0f172a; }
 
     [data-theme="dark"] .controls-bar {
         background: var(--surface);
@@ -165,7 +172,7 @@
         border-radius: 50%;
         border: 2px solid var(--surface, #fff);
         display: flex; align-items: center; justify-content: center;
-        font-size: 8px; color: #fff; font-weight: 700;
+        font-size: 11px; color: #fff; font-weight: 700;
     }
 
     /* Kolom Edit sticky kanan */
@@ -239,6 +246,275 @@
     .col-hidden { display: none !important; }
 
     /* =====================================================
+       TRUNCATE — kolom panjang seperti DEVICE_ID
+       ===================================================== */
+    .col-truncate {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: help;
+    }
+
+    /* =====================================================
+       STICKY HEADER — unlock ancestor overflow yang memblokir
+       ===================================================== */
+    /*
+     * ROOT CAUSE: style.css punya
+     *   .main-container  { overflow-x: hidden }
+     *   .content-wrapper { overflow: hidden }
+     * Keduanya memblokir position:sticky pada semua keturunan.
+     * Override di sini hanya berlaku untuk halaman kendalamaster.
+     */
+    .main-container  { overflow-x: visible !important; }
+    .content-wrapper { overflow: visible !important; }
+
+    /* table-wrapper: scroll horizontal saja, vertikal ikut halaman */
+    .table-wrapper {
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        max-height: none !important;
+    }
+    /* thead sticky ke atas viewport */
+    .editable-table thead th {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 20 !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
+    }
+    /* Sudut kiri-atas (No. + sticky) */
+    .editable-table thead th:first-child {
+        z-index: 31 !important;
+    }
+    /* Sudut kanan-atas (Edit + sticky) */
+    .editable-table thead th.col-edit-sticky {
+        z-index: 31 !important;
+    }
+
+    /* =====================================================
+       STICKY WONUM — kolom ke-2 dari kiri
+       ===================================================== */
+    .col-wonum-sticky {
+        position: sticky !important;
+        left: 46px !important;
+        z-index: 8 !important;
+        background: #f7f9fc !important;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.07) !important;
+    }
+    .editable-table thead th.col-wonum-sticky {
+        background: #34495e !important;
+        z-index: 28 !important;
+        color: #fff !important;
+    }
+    /* Hover & zebra tetap benar */
+    .editable-table tbody tr:hover td.col-wonum-sticky { background: #bbdefb !important; }
+    .editable-table tr:nth-child(even) td.col-wonum-sticky { background: #edf1f7 !important; }
+    .editable-table tr.is-dirty td.col-wonum-sticky { background: #ffeeba !important; }
+    [data-theme="dark"] .col-wonum-sticky { background: #1a2332 !important; }
+    [data-theme="dark"] .editable-table thead th.col-wonum-sticky { background: #1e3a5f !important; }
+    [data-theme="dark"] .editable-table tbody tr:hover td.col-wonum-sticky { background: #22304a !important; }
+    [data-theme="dark"] .editable-table tr:nth-child(even) td.col-wonum-sticky { background: #111827 !important; }
+
+    /* =====================================================
+       UMUR KENDALA — badge berwarna per kategori
+       ===================================================== */
+    .umur-badge {
+        display: inline-block !important;
+        padding: 3px 10px !important;
+        border-radius: 999px !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        white-space: nowrap !important;
+        text-align: center !important;
+        width: 100% !important;
+        border: none !important;
+        cursor: default !important;
+        background: transparent;
+        letter-spacing: 0.2px;
+    }
+    .umur-a { background: #dcfce7 !important; color: #166534 !important; }
+    .umur-b { background: #fef9c3 !important; color: #854d0e !important; }
+    .umur-c { background: #ffedd5 !important; color: #9a3412 !important; }
+    .umur-d { background: #fee2e2 !important; color: #991b1b !important; }
+    .umur-e { background: #fecaca !important; color: #7f1d1d !important; }
+    .umur-f { background: #dc2626 !important; color: #fff !important; }
+    .umur-g { background: #7f1d1d !important; color: #fde68a !important; }
+    /* Dark mode */
+    [data-theme="dark"] .umur-a { background: #14532d !important; color: #86efac !important; }
+    [data-theme="dark"] .umur-b { background: #713f12 !important; color: #fde68a !important; }
+    [data-theme="dark"] .umur-c { background: #7c2d12 !important; color: #fdba74 !important; }
+    [data-theme="dark"] .umur-d { background: #7f1d1d !important; color: #fca5a5 !important; }
+    [data-theme="dark"] .umur-e { background: #6b1212 !important; color: #fca5a5 !important; }
+    [data-theme="dark"] .umur-f { background: #991b1b !important; color: #fff !important; }
+    [data-theme="dark"] .umur-g { background: #450a0a !important; color: #fde68a !important; }
+
+    /* =====================================================
+       LAMA WO — warna berdasarkan jumlah hari
+       ===================================================== */
+    .lama-badge {
+        display: inline-block !important;
+        padding: 3px 8px !important;
+        border-radius: 6px !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        text-align: center !important;
+        width: 100% !important;
+        border: 1px solid transparent !important;
+        cursor: default !important;
+    }
+    .lama-ok     { background: #dcfce7 !important; color: #166534 !important; border-color: #86efac !important; }
+    .lama-warn   { background: #fef9c3 !important; color: #854d0e !important; border-color: #fde047 !important; }
+    .lama-alert  { background: #ffedd5 !important; color: #9a3412 !important; border-color: #fb923c !important; }
+    .lama-danger { background: #fee2e2 !important; color: #991b1b !important; border-color: #fca5a5 !important; }
+    .lama-kritis { background: #dc2626 !important; color: #fff    !important; border-color: #b91c1c !important; }
+    [data-theme="dark"] .lama-ok     { background: #14532d !important; color: #86efac !important; border-color: #166534 !important; }
+    [data-theme="dark"] .lama-warn   { background: #713f12 !important; color: #fde68a !important; border-color: #854d0e !important; }
+    [data-theme="dark"] .lama-alert  { background: #7c2d12 !important; color: #fdba74 !important; border-color: #9a3412 !important; }
+    [data-theme="dark"] .lama-danger { background: #7f1d1d !important; color: #fca5a5 !important; border-color: #991b1b !important; }
+    [data-theme="dark"] .lama-kritis { background: #991b1b !important; color: #fff    !important; border-color: #7f1d1d !important; }
+
+    /* =====================================================
+       LAST SYNC BADGE
+       ===================================================== */
+    .sync-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-muted, #64748b);
+    }
+    .sync-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        flex-shrink: 0;
+        box-shadow: 0 0 0 2px rgba(34,197,94,0.2);
+    }
+    .sync-dot.never { background: #94a3b8; box-shadow: none; }
+
+    /* =====================================================
+       FILTER CARD — perbaikan tata letak
+       ===================================================== */
+    .km-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .km-filter-grid .filter-item label {
+        font-weight: 600;
+        font-size: 11px;
+        color: var(--text-muted, #64748b);
+        margin-bottom: 4px;
+        display: block;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .km-filter-grid .filter-item select,
+    .km-filter-grid .filter-item input[type="date"] {
+        width: 100%;
+        padding: 7px 10px;
+        border: 1px solid var(--border, #cbd5e1);
+        border-radius: 6px;
+        font-size: 13px;
+        background: var(--surface, #fff);
+        color: var(--text, #1e293b);
+        transition: border-color 0.15s;
+    }
+    .km-filter-grid .filter-item select:focus,
+    .km-filter-grid .filter-item input:focus {
+        border-color: #3b82f6;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+    .km-filter-search {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+        margin-top: 4px;
+    }
+    .km-filter-search .search-wrap {
+        flex: 1;
+        position: relative;
+    }
+    .km-filter-search .search-wrap input {
+        width: 100%;
+        padding: 8px 10px 8px 34px;
+        border: 1px solid var(--border, #cbd5e1);
+        border-radius: 6px;
+        font-size: 13px;
+        background: var(--surface, #fff);
+        color: var(--text, #1e293b);
+    }
+    .km-filter-search .search-wrap input:focus {
+        border-color: #3b82f6;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+    .km-filter-search .search-wrap i {
+        position: absolute;
+        left: 10px; top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        font-size: 13px;
+    }
+    .km-filter-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    /* Quick Mode — tooltip pakai span HTML (lebih andal dari ::after) */
+    .mode-cepat-wrap { position: relative; display: inline-flex; }
+    .mode-cepat-tip {
+        display: none;
+        position: fixed;
+        background: #1e293b;
+        color: #fff;
+        font-size: 11px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        white-space: nowrap;
+        z-index: 9999;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    .mode-cepat-wrap:hover .mode-cepat-tip { display: block; }
+
+    /* ── Filter collapsible ── */
+    .km-filter-body {
+        overflow: hidden;
+        transition: max-height 0.3s ease, opacity 0.25s ease;
+        max-height: 500px;
+        opacity: 1;
+    }
+    .km-filter-body.collapsed {
+        max-height: 0;
+        opacity: 0;
+    }
+    .km-filter-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text, #2c3e50);
+        padding: 0;
+        width: 100%;
+        text-align: left;
+    }
+    .km-filter-toggle .toggle-chevron {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--text-muted, #94a3b8);
+        transition: transform 0.25s ease;
+    }
+    .km-filter-toggle.collapsed .toggle-chevron { transform: rotate(-90deg); }
+
+    /* =====================================================
        TOOLBAR
        ===================================================== */
     .automation-container { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; }
@@ -253,10 +529,26 @@
         <h1 style="margin:0; font-size:22px; color:var(--text, #1e293b);">
             <i class="fa-solid fa-database"></i> DB KENDALA (MASTER)
         </h1>
-        <div style="font-size:13px; color:var(--text-muted, #64748b);">
-            <i class="fa-solid fa-clock"></i> Total: <strong>{{ pagination.total_rows or 0 }}</strong> order
-            &nbsp;|&nbsp;
-            <i class="fa-solid fa-history"></i> Update: <strong>{{ last_sync or '-' }}</strong>
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+            <!-- Total order -->
+            <span style="font-size:13px; color:var(--text-muted, #64748b);">
+                <i class="fa-solid fa-layer-group" style="margin-right:4px;"></i>
+                Total: <strong style="color:var(--text,#1e293b);">{{ pagination.total_rows or 0 }}</strong> order
+            </span>
+            <!-- Divider -->
+            <span style="color:var(--border,#e2e8f0);">|</span>
+            <!-- Last sync badge -->
+            {% if last_sync and last_sync != 'Belum ada data' %}
+                <span class="sync-badge" title="Waktu terakhir Sinkronisasi BIMA berhasil dijalankan">
+                    <span class="sync-dot"></span>
+                    <span>Sync terakhir: <strong>{{ last_sync }}</strong></span>
+                </span>
+            {% else %}
+                <span class="sync-badge" title="Sinkronisasi BIMA belum pernah dijalankan">
+                    <span class="sync-dot never"></span>
+                    <span style="font-style:italic;">Belum pernah diperbarui</span>
+                </span>
+            {% endif %}
         </div>
     </div>
 
@@ -323,100 +615,129 @@
     </div>
 
     <!-- FILTER BAR -->
-    <div class="filter-card" style="background:var(--surface,#fff); padding:16px 20px; margin-bottom:14px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05); border:1px solid var(--border,#ddd);">
-        <h3 style="font-size:15px; margin:0 0 12px 0; color:var(--text,#2c3e50);"><i class="fas fa-filter"></i> Filter Data</h3>
-        <form method="GET" action="{{ url_for('kendala_master') }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;" data-testid="filter-form">
+    <div class="filter-card" style="background:var(--surface,#fff); padding:16px 20px; margin-bottom:14px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06); border:1px solid var(--border,#e2e8f0);">
 
-            <!-- Row 1 -->
-            <div style="flex:1; min-width:100px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">STO</label>
-                <select name="sto">
-                    <option value="">-- Semua --</option>
-                    <option value="MGE" {% if pagination.sto == 'MGE' %}selected{% endif %}>MGE</option>
-                    <option value="KBM" {% if pagination.sto == 'KBM' %}selected{% endif %}>KBM</option>
-                    <option value="PWJ" {% if pagination.sto == 'PWJ' %}selected{% endif %}>PWJ</option>
-                    <option value="MTY" {% if pagination.sto == 'MTY' %}selected{% endif %}>MTY</option>
-                    <option value="TEM" {% if pagination.sto == 'TEM' %}selected{% endif %}>TEM</option>
-                    <option value="WOS" {% if pagination.sto == 'WOS' %}selected{% endif %}>WOS</option>
-                    <option value="GOM" {% if pagination.sto == 'GOM' %}selected{% endif %}>GOM</option>
-                    <option value="KAK" {% if pagination.sto == 'KAK' %}selected{% endif %}>KAK</option>
-                    <option value="SWT" {% if pagination.sto == 'SWT' %}selected{% endif %}>SWT</option>
-                </select>
+        <!-- Header filter — collapsible -->
+        {% set active_filter_count = [0] %}
+        {% if pagination.sto %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+        {% if pagination.status %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+        {% if pagination.feedback %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+        {% if pagination.is_active %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+        {% if pagination.umur %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+        {% if pagination.date_from %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+        {% if pagination.date_to %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+        {% if pagination.search %}{% set _ = active_filter_count.append(active_filter_count.pop() + 1) %}{% endif %}
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+            <button type="button" class="km-filter-toggle" id="km-filter-toggle-btn" onclick="toggleKmFilter()">
+                <i class="fas fa-sliders-h" style="color:#3b82f6;"></i>
+                Filter Data
+                {% if active_filter_count[0] > 0 %}
+                    <span style="background:#dbeafe; color:#1d4ed8; border-radius:999px; padding:1px 9px; font-size:11px; font-weight:700; margin-left:4px;">
+                        {{ active_filter_count[0] }} aktif
+                    </span>
+                {% endif %}
+                <i class="fas fa-chevron-down toggle-chevron"></i>
+            </button>
+        </div>
+        <div class="km-filter-body" id="km-filter-body">
+
+        <form method="GET" action="{{ url_for('kendala_master') }}" data-testid="filter-form">
+
+            <!-- Baris 1: filter dropdown -->
+            <div class="km-filter-grid">
+                <div class="filter-item">
+                    <label>STO</label>
+                    <select name="sto">
+                        <option value="">Semua STO</option>
+                        <option value="MGE" {% if pagination.sto == 'MGE' %}selected{% endif %}>MGE — Magelang</option>
+                        <option value="MTY" {% if pagination.sto == 'MTY' %}selected{% endif %}>MTY — Magelang Timur</option>
+                        <option value="KBM" {% if pagination.sto == 'KBM' %}selected{% endif %}>KBM — Kebumen</option>
+                        <option value="GOM" {% if pagination.sto == 'GOM' %}selected{% endif %}>GOM — Gombong</option>
+                        <option value="KAK" {% if pagination.sto == 'KAK' %}selected{% endif %}>KAK — Kaliangkrik</option>
+                        <option value="KTW" {% if pagination.sto == 'KTW' %}selected{% endif %}>KTW — Kutowinangun</option>
+                        <option value="TEM" {% if pagination.sto == 'TEM' %}selected{% endif %}>TEM — Temanggung</option>
+                        <option value="PRN" {% if pagination.sto == 'PRN' %}selected{% endif %}>PRN — Parakan</option>
+                        <option value="WOS" {% if pagination.sto == 'WOS' %}selected{% endif %}>WOS — Wonosobo</option>
+                        <option value="PWJ" {% if pagination.sto == 'PWJ' %}selected{% endif %}>PWJ — Purworejo</option>
+                        <option value="KTA" {% if pagination.sto == 'KTA' %}selected{% endif %}>KTA — Kutoarjo</option>
+                        <option value="SWT" {% if pagination.sto == 'SWT' %}selected{% endif %}>SWT — Sawit</option>
+                        <option value="MUN" {% if pagination.sto == 'MUN' %}selected{% endif %}>MUN — Muntilan</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label>Status Resume</label>
+                    <select name="status">
+                        <option value="">Semua Status</option>
+                        <option value="WORKFAIL" {% if pagination.status == 'WORKFAIL' %}selected{% endif %}>WORKFAIL</option>
+                        <option value="FALLOUT" {% if pagination.status == 'FALLOUT' %}selected{% endif %}>FALLOUT</option>
+                        <option value="INVALID SURVEY" {% if pagination.status == 'INVALID SURVEY' %}selected{% endif %}>INVALID SURVEY</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label>Feedback ASO</label>
+                    <select name="feedback">
+                        <option value="">Semua Feedback</option>
+                        {% for option in feedback_options %}
+                            <option value="{{ option }}" {% if pagination.feedback == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label>Status Aktif</label>
+                    <select name="is_active">
+                        <option value="">Semua</option>
+                        <option value="ACTIVE"   {% if pagination.is_active == 'ACTIVE'   %}selected{% endif %}>✅ ACTIVE</option>
+                        <option value="INACTIVE" {% if pagination.is_active == 'INACTIVE' %}selected{% endif %}>❌ INACTIVE</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label>Umur Kendala</label>
+                    <select name="umur">
+                        <option value="">Semua Umur</option>
+                        <option value="A. <1 HARI"    {% if pagination.umur == 'A. <1 HARI'    %}selected{% endif %}>🟢 A — &lt;1 Hari</option>
+                        <option value="B. 1-3 HARI"   {% if pagination.umur == 'B. 1-3 HARI'   %}selected{% endif %}>🟡 B — 1-3 Hari</option>
+                        <option value="C. 4-7 HARI"   {% if pagination.umur == 'C. 4-7 HARI'   %}selected{% endif %}>🟠 C — 4-7 Hari</option>
+                        <option value="D. 1-2 MINGGU" {% if pagination.umur == 'D. 1-2 MINGGU' %}selected{% endif %}>🔴 D — 1-2 Minggu</option>
+                        <option value="E. 2-3 MINGGU" {% if pagination.umur == 'E. 2-3 MINGGU' %}selected{% endif %}>🔴 E — 2-3 Minggu</option>
+                        <option value="F. >3 MINGGU"  {% if pagination.umur == 'F. >3 MINGGU'  %}selected{% endif %}>⚫ F — &gt;3 Minggu</option>
+                        <option value="G. >1 BULAN"   {% if pagination.umur == 'G. >1 BULAN'   %}selected{% endif %}>⚫ G — &gt;1 Bulan</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label>Order Date Dari</label>
+                    <input type="date" name="date_from" value="{{ pagination.date_from }}">
+                </div>
+
+                <div class="filter-item">
+                    <label>Order Date S/d</label>
+                    <input type="date" name="date_to" value="{{ pagination.date_to }}">
+                </div>
             </div>
 
-            <div style="flex:1; min-width:130px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">Status Resume</label>
-                <select name="status">
-                    <option value="">-- Semua --</option>
-                    <option value="WORKFAIL" {% if pagination.status == 'WORKFAIL' %}selected{% endif %}>WORKFAIL</option>
-                    <option value="FALLOUT" {% if pagination.status == 'FALLOUT' %}selected{% endif %}>FALLOUT</option>
-                    <option value="INVALID SURVEY" {% if pagination.status == 'INVALID SURVEY' %}selected{% endif %}>INVALID SURVEY</option>
-                </select>
-            </div>
-
-            <div style="flex:1; min-width:140px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">Feedback ASO</label>
-                <select name="feedback">
-                    <option value="">-- Semua --</option>
-                    {% for option in feedback_options %}
-                        <option value="{{ option }}" {% if pagination.feedback == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div style="flex:1; min-width:120px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">Status Aktif</label>
-                <select name="is_active">
-                    <option value="">-- Semua --</option>
-                    <option value="ACTIVE"   {% if pagination.is_active == 'ACTIVE'   %}selected{% endif %}>ACTIVE</option>
-                    <option value="INACTIVE" {% if pagination.is_active == 'INACTIVE' %}selected{% endif %}>INACTIVE</option>
-                </select>
-            </div>
-
-            <div style="flex:1; min-width:145px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">Umur Kendala</label>
-                <select name="umur">
-                    <option value="">-- Semua --</option>
-                    <option value="A. <1 HARI"    {% if pagination.umur == 'A. <1 HARI'    %}selected{% endif %}>A. &lt;1 Hari</option>
-                    <option value="B. 1-3 HARI"   {% if pagination.umur == 'B. 1-3 HARI'   %}selected{% endif %}>B. 1-3 Hari</option>
-                    <option value="C. 4-7 HARI"   {% if pagination.umur == 'C. 4-7 HARI'   %}selected{% endif %}>C. 4-7 Hari</option>
-                    <option value="D. 1-2 MINGGU" {% if pagination.umur == 'D. 1-2 MINGGU' %}selected{% endif %}>D. 1-2 Minggu</option>
-                    <option value="E. 2-3 MINGGU" {% if pagination.umur == 'E. 2-3 MINGGU' %}selected{% endif %}>E. 2-3 Minggu</option>
-                    <option value="F. >3 MINGGU"  {% if pagination.umur == 'F. >3 MINGGU'  %}selected{% endif %}>F. &gt;3 Minggu</option>
-                    <option value="G. >1 BULAN"   {% if pagination.umur == 'G. >1 BULAN'   %}selected{% endif %}>G. &gt;1 Bulan</option>
-                </select>
-            </div>
-
-            <div style="flex:1; min-width:130px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">Order Date Dari</label>
-                <input type="date" name="date_from" value="{{ pagination.date_from }}"
-                       style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:4px; background:var(--surface,#fff); color:var(--text,#333); font-size:13px;">
-            </div>
-
-            <div style="flex:1; min-width:130px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">Order Date S/d</label>
-                <input type="date" name="date_to" value="{{ pagination.date_to }}"
-                       style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:4px; background:var(--surface,#fff); color:var(--text,#333); font-size:13px;">
-            </div>
-
-            <div style="flex:2; min-width:200px;">
-                <label style="font-weight:600; font-size:12px; color:var(--text-muted,#555); margin-bottom:4px; display:block;">Cari (WONUM / Order ID / Device)</label>
-                <div style="position:relative;">
-                    <input type="text" name="search" value="{{ pagination.search }}" placeholder="Ketik nomor order..." style="width:100%; padding:8px 8px 8px 32px;">
-                    <i class="fas fa-search" style="position:absolute; left:10px; top:10px; color:#999;"></i>
+            <!-- Baris 2: search + tombol -->
+            <div class="km-filter-search">
+                <div class="search-wrap">
+                    <i class="fas fa-search"></i>
+                    <input type="text" name="search" value="{{ pagination.search }}"
+                           placeholder="Cari WONUM / Order ID / Device ID...">
+                </div>
+                <div class="km-filter-actions">
+                    <button type="submit" class="toolbar-btn active" style="padding:8px 18px;">
+                        <i class="fa-solid fa-filter"></i> Terapkan
+                    </button>
+                    <a href="{{ url_for('kendala_master') }}" class="toolbar-btn" style="color:#d9534f; text-decoration:none; padding:8px 14px;">
+                        <i class="fa-solid fa-xmark"></i> Reset
+                    </a>
                 </div>
             </div>
 
             {% if pagination.new_only %}<input type="hidden" name="new_only" value="1">{% endif %}
-
-            <div style="display:flex; gap:8px; align-self:flex-end;">
-                <button type="submit" class="toolbar-btn active">
-                    <i class="fa-solid fa-filter"></i> Terapkan
-                </button>
-                <a href="{{ url_for('kendala_master') }}" class="toolbar-btn" style="color:#d9534f; text-decoration:none;">
-                    <i class="fa-solid fa-xmark"></i> Reset
-                </a>
-            </div>
 
         </form>
 
@@ -439,13 +760,19 @@
         </div>
         {% endif %}
 
+        </div><!-- /km-filter-body -->
     </div>
 
     <!-- TOOLBAR (satu baris, tanpa zoom) -->
-    <div class="toolbar-row" style="margin-bottom:14px;">
-        <button type="button" class="toolbar-btn" id="btn-quick-mode" onclick="toggleQuickMode()" data-testid="btn-quick-mode">
-            <i class="fa-solid fa-bolt"></i> Mode Cepat
-        </button>
+    <div class="toolbar-row" style="margin-bottom:14px; overflow:visible;">
+        <div class="mode-cepat-wrap">
+            <button type="button" class="toolbar-btn" id="btn-quick-mode" onclick="toggleQuickMode()" data-testid="btn-quick-mode">
+                <i class="fa-solid fa-bolt"></i> Mode Cepat
+            </button>
+            <span class="mode-cepat-tip" id="mode-cepat-tip">
+                Tampilkan hanya kolom penting untuk kerja
+            </span>
+        </div>
         <div class="col-chooser">
             <button type="button" class="col-chooser-btn" onclick="toggleColChooser(event)" data-testid="btn-col-chooser">
                 <i class="fa-solid fa-table-columns"></i> Pilih Kolom
@@ -522,7 +849,7 @@
                                 {% for i in range(header|length) %}
                                     {% set h = header[i] %}
                                     {% set v = row[i] if i < row|length else '' %}
-                                    <td class="col-c-{{ i }}" title="{{ v }}" data-col="{{ h }}">
+                                    <td class="col-c-{{ i }}{% if h in ['DEVICE_ID','ENGINEERMEMO','SUBERRORCODE'] %} col-truncate{% endif %}" title="{{ v }}" data-col="{{ h }}">
 
                                         {# ===== FEEDBACK ASO — dropdown berwarna ===== #}
                                         {% if h == 'FEEDBACK ASO' %}
@@ -562,14 +889,37 @@
                                                    class="date-input"
                                                    style="background:transparent; border:none; width:100%; text-align:center; color:var(--text-muted,#555); font-size:12px; font-weight:500;">
 
-                                        {# ===== LAMA WO & UMUR KENDALA — readonly otomatis ===== #}
-                                        {% elif h in ['LAMA WO', 'UMUR KENDALA'] %}
+                                        {# ===== UMUR KENDALA — badge berwarna per kategori ===== #}
+                                        {% elif h == 'UMUR KENDALA' %}
+                                            {% if v.startswith('A.') %}{% set umur_cls = 'umur-a' %}
+                                            {% elif v.startswith('B.') %}{% set umur_cls = 'umur-b' %}
+                                            {% elif v.startswith('C.') %}{% set umur_cls = 'umur-c' %}
+                                            {% elif v.startswith('D.') %}{% set umur_cls = 'umur-d' %}
+                                            {% elif v.startswith('E.') %}{% set umur_cls = 'umur-e' %}
+                                            {% elif v.startswith('F.') %}{% set umur_cls = 'umur-f' %}
+                                            {% elif v.startswith('G.') %}{% set umur_cls = 'umur-g' %}
+                                            {% else %}{% set umur_cls = '' %}{% endif %}
                                             <input type="text"
-                                                   name="{{ h }}[{{ row_number }}]"
+                                                   name="UMUR KENDALA[{{ row_number }}]"
                                                    value="{{ v }}"
                                                    readonly
-                                                   style="background-color:var(--surface-2,#e9ecef); color:var(--text-muted,#495057); border:1px solid var(--border,#ced4da); text-align:center; font-weight:bold; cursor:not-allowed; width:100%; padding:4px;"
-                                                   title="Dihitung Otomatis">
+                                                   class="umur-badge {{ umur_cls }}"
+                                                   title="Dihitung otomatis: {{ v }}">
+
+                                        {# ===== LAMA WO — warna berdasarkan jumlah hari ===== #}
+                                        {% elif h == 'LAMA WO' %}
+                                            {% set lama_num = v|int(0) if v else 0 %}
+                                            {% if lama_num >= 90 %}{% set lama_cls = 'lama-kritis' %}
+                                            {% elif lama_num >= 30 %}{% set lama_cls = 'lama-danger' %}
+                                            {% elif lama_num >= 14 %}{% set lama_cls = 'lama-alert' %}
+                                            {% elif lama_num >= 7 %}{% set lama_cls = 'lama-warn' %}
+                                            {% else %}{% set lama_cls = 'lama-ok' %}{% endif %}
+                                            <input type="text"
+                                                   name="LAMA WO[{{ row_number }}]"
+                                                   value="{{ v }}"
+                                                   readonly
+                                                   class="lama-badge {{ lama_cls }}"
+                                                   title="Dihitung otomatis: {{ v }} hari">
 
                                         {# ===== CURRENT_UIC — dropdown berwarna ===== #}
                                         {% elif h == 'CURRENT_UIC' %}
@@ -768,7 +1118,7 @@ if (typeof window.initQuickEdit === 'function') {
 // 1. HELPER WAKTU
 // =====================================================
 const HEADERS = {{ header|tojson }};
-const ESSENTIAL_COLS = ['ORDER_ID','WONUM','STO','DATEL','STATUS_RESUME','SUBERRORCODE','ENGINEERMEMO',
+const ESSENTIAL_COLS = ['ORDER_ID','STO','DATEL','STATUS_RESUME','SUBERRORCODE','ENGINEERMEMO',
     'ACTUAL KENDALA','FEEDBACK ASO','TGL FEEDBACK','NOTES ASO','IS_ACTIVE_KENDALA','LAMA WO','UMUR KENDALA','CEK DB UNSC'];
 const CC_KEY = 'filterin-kendala-cols-v1';
 
@@ -854,8 +1204,13 @@ async function triggerSyncBima() {
         const data = await res.json();
         if (data.status === 'success') {
             st.innerHTML = `<span style="color:#059669;"><i class="fas fa-check"></i> ${data.message}</span>`;
-            if (window.toast) window.toast('Sync OK: ' + data.message, 'success');
-            setTimeout(() => window.location.reload(), 2000);
+            if (data.appends > 0) {
+                // Ada data baru — tampilkan notifikasi khusus
+                showNewDataNotif(data.appends);
+            } else {
+                if (window.toast) window.toast('Sync selesai — tidak ada data baru.', 'success');
+                setTimeout(() => window.location.reload(), 2000);
+            }
         } else {
             st.innerHTML = `<span style="color:#dc2626;"><i class="fas fa-xmark"></i> ${data.message}</span>`;
             if (window.toast) window.toast('Gagal sync: ' + data.message, 'error');
@@ -1015,11 +1370,189 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btn-quick-mode').classList.toggle('active', quickMode);
     if (!cc_state() && quickMode) cc_selectEssential();
     else cc_apply();
+    // Init filter collapsible — restore state dari localStorage
+    initKmFilter();
+    // Sticky WONUM column
+    applyStickyWonum();
     // Start polling data
     setInterval(fetchUpdates, 10000);
     // Start refresh lock status tombol pencil tiap 15 detik
     setInterval(refreshLockButtons, 15000);
 });
+
+// =====================================================
+// 15. COLLAPSIBLE FILTER
+// =====================================================
+const KM_FILTER_KEY = 'filterin-km-filter-open';
+
+function initKmFilter() {
+    // Cek filter aktif dari URL params (tidak perlu variabel Jinja2)
+    const params = new URLSearchParams(window.location.search);
+    const filterKeys = ['sto','status','feedback','is_active','umur','date_from','date_to','search'];
+    const hasActiveFilter = filterKeys.some(k => params.get(k));
+    const saved = localStorage.getItem(KM_FILTER_KEY);
+    // Kalau ada filter aktif → paksa terbuka; kalau tidak ada → ikuti state tersimpan
+    const isOpen = hasActiveFilter ? true : (saved === null ? true : saved === '1');
+    _setKmFilter(isOpen, false);
+}
+
+function toggleKmFilter() {
+    const body = document.getElementById('km-filter-body');
+    const isNowOpen = body.classList.contains('collapsed');
+    _setKmFilter(isNowOpen, true);
+}
+
+function _setKmFilter(open, save) {
+    const body = document.getElementById('km-filter-body');
+    const btn  = document.getElementById('km-filter-toggle-btn');
+    if (open) {
+        body.classList.remove('collapsed');
+        btn.classList.remove('collapsed');
+    } else {
+        body.classList.add('collapsed');
+        btn.classList.add('collapsed');
+    }
+    if (save) localStorage.setItem(KM_FILTER_KEY, open ? '1' : '0');
+}
+
+// =====================================================
+// 18. NOTIFIKASI DATA BARU SETELAH SYNC
+// =====================================================
+function showNewDataNotif(count) {
+    // Hapus notif sebelumnya jika ada
+    const old = document.getElementById('sync-new-notif');
+    if (old) old.remove();
+
+    const notif = document.createElement('div');
+    notif.id = 'sync-new-notif';
+    notif.innerHTML = `
+        <div style="
+            position:fixed; bottom:30px; right:30px; z-index:9999;
+            background:#fff; border-radius:14px;
+            box-shadow:0 8px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06);
+            width:320px; overflow:hidden;
+            animation:slideUpNotif 0.4s cubic-bezier(.16,1,.3,1);
+        ">
+            <!-- Header hijau -->
+            <div style="background:linear-gradient(135deg,#15803d,#22c55e);
+                        padding:14px 16px; display:flex; align-items:center; gap:10px;">
+                <div style="width:36px;height:36px;background:rgba(255,255,255,0.25);
+                            border-radius:50%;display:flex;align-items:center;
+                            justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-check" style="color:#fff;font-size:16px;"></i>
+                </div>
+                <div>
+                    <div style="color:#fff;font-weight:700;font-size:14px;">Sinkronisasi Berhasil!</div>
+                    <div style="color:rgba(255,255,255,0.85);font-size:12px;">${count} data baru ditambahkan</div>
+                </div>
+                <button onclick="document.getElementById('sync-new-notif').remove()"
+                        style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,0.7);
+                               font-size:18px;cursor:pointer;line-height:1;padding:0;">✕</button>
+            </div>
+            <!-- Body -->
+            <div style="padding:14px 16px;">
+                <p style="margin:0 0 12px;font-size:13px;color:#334155;line-height:1.5;">
+                    <strong>${count} baris baru</strong> dari BIMA telah masuk ke DB Kendala Master.<br>
+                    Mau langsung lihat data yang baru masuk?
+                </p>
+                <div style="display:flex;gap:8px;">
+                    <a href="/kendala_master?new_only=1"
+                       style="flex:1;background:#1d4ed8;color:#fff;border-radius:8px;
+                              padding:8px 12px;text-align:center;font-size:13px;font-weight:700;
+                              text-decoration:none;display:block;">
+                        <i class="fas fa-arrow-right"></i> Lihat Data Baru
+                    </a>
+                    <a href="/kendala_master"
+                       style="flex:1;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;
+                              padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;color:#475569;
+                              text-decoration:none;text-align:center;display:block;">
+                        Lihat Semua Data
+                    </a>
+                </div>
+                <!-- Progress bar auto-dismiss -->
+                <div style="margin-top:12px;height:3px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+                    <div id="notif-progress" style="height:100%;background:#22c55e;width:100%;
+                                                   transition:width 10s linear;"></div>
+                </div>
+                <div style="font-size:10px;color:#94a3b8;margin-top:4px;text-align:right;">
+                    Menutup otomatis dalam 10 detik
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(notif);
+
+    // Mulai progress bar auto-dismiss
+    requestAnimationFrame(() => {
+        const bar = document.getElementById('notif-progress');
+        if (bar) { bar.style.transition = 'width 10s linear'; bar.style.width = '0%'; }
+    });
+
+    // Auto dismiss setelah 10 detik
+    setTimeout(() => {
+        const el = document.getElementById('sync-new-notif');
+        if (el) {
+            el.style.transition = 'opacity 0.4s, transform 0.4s';
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            setTimeout(() => el.remove(), 400);
+        }
+    }, 10000);
+}
+
+// CSS untuk animasi notif
+(function() {
+    const s = document.createElement('style');
+    s.textContent = `
+        @keyframes slideUpNotif {
+            from { opacity:0; transform:translateY(30px); }
+            to   { opacity:1; transform:translateY(0); }
+        }
+    `;
+    document.head.appendChild(s);
+})();
+
+// =====================================================
+// 17. STICKY WONUM COLUMN
+// =====================================================
+function applyStickyWonum() {
+    const wIdx = (typeof HEADERS !== 'undefined') ? HEADERS.indexOf('WONUM') : -1;
+    if (wIdx < 0) return;
+
+    // Sticky pada thead th
+    const wTh = document.querySelector('.col-h-' + wIdx);
+    if (wTh) wTh.classList.add('col-wonum-sticky');
+
+    // Sticky pada semua td di tbody
+    document.querySelectorAll('.col-c-' + wIdx).forEach(function(td) {
+        td.classList.add('col-wonum-sticky');
+    });
+}
+
+// =====================================================
+// 16. TOOLTIP MODE CEPAT — ikuti posisi tombol (fixed)
+// =====================================================
+(function() {
+    const wrap = document.querySelector('.mode-cepat-wrap');
+    const tip  = document.getElementById('mode-cepat-tip');
+    if (!wrap || !tip) return;
+    wrap.addEventListener('mouseenter', function() {
+        const rect = wrap.getBoundingClientRect();
+        tip.style.left = rect.left + (rect.width / 2) - (tip.offsetWidth / 2) + 'px';
+        tip.style.top  = (rect.top - tip.offsetHeight - 8) + 'px';
+        // Kalau belum render (offsetWidth 0), pakai pendekatan alternatif
+        tip.style.display = 'block';
+        // Re-posisi setelah visible
+        requestAnimationFrame(function() {
+            const tw = tip.offsetWidth;
+            tip.style.left = rect.left + (rect.width / 2) - (tw / 2) + 'px';
+            tip.style.top  = (rect.top - tip.offsetHeight - 8) + 'px';
+        });
+    });
+    wrap.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+    });
+})();
 
 // =====================================================
 // 14. REFRESH STATUS LOCK TOMBOL PENCIL

@@ -968,7 +968,9 @@ def _compute_dashboard_stats():
  
         # ── Chart 1: Kendala per STO ──
         if 'STO' in df_active.columns:
-            sto_counts = df_active['STO'].str.strip().str.upper().value_counts()
+            sto_series = df_active['STO'].str.strip().str.upper()
+            sto_series = sto_series[sto_series != '']   # buang STO kosong
+            sto_counts = sto_series.value_counts()
             chart_sto = {
                 'labels': sto_counts.index.tolist(),
                 'values': sto_counts.values.tolist(),
@@ -1084,12 +1086,26 @@ def dashboard():
 def dashboard_stats():
     """Endpoint real-time polling untuk angka kartu statistik."""
     stats = _compute_dashboard_stats()
+    unseen = 0
+    try:
+        user_name = session['user']['username']
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                """SELECT COUNT(*) AS c FROM sync_new_rows
+                   WHERE sync_time > (NOW() - INTERVAL 24 HOUR)
+                     AND (seen_by IS NULL OR NOT JSON_CONTAINS(seen_by, JSON_QUOTE(%s)))""",
+                (user_name,)
+            )
+            unseen = cur.fetchone()['c']
+    except Exception:
+        pass
     return jsonify(
-        total  = stats['total'],
-        done   = stats['done'],
-        unsc   = stats['unsc'],
-        pending= stats['pending'],
-        active = stats['active'],
+        total           = stats['total'],
+        done            = stats['done'],
+        unsc            = stats['unsc'],
+        pending         = stats['pending'],
+        active          = stats['active'],
+        unseen_new_rows = unseen,
     )
 
 # =====================================================================
@@ -1144,6 +1160,13 @@ def kendala_master():
 
         # Track source row number in sheet (for update_kendala) - uppercase to survive hitung_rumus_otomatis
         df['__SHEET_ROW__'] = range(3, 3 + len(df))
+
+        # ── Buang baris yang sepenuhnya kosong (misal baris 1 di Google Sheet kosong) ──
+        key_cols = [c for c in ['ORDER_ID', 'WONUM'] if c in df.columns]
+        if key_cols:
+            df = df[df[key_cols].apply(lambda r: any(str(v).strip() for v in r), axis=1)]
+        else:
+            df = df[df.apply(lambda r: r.astype(str).str.strip().ne('').any(), axis=1)]
 
         df = hitung_rumus_otomatis(df)
 
@@ -1264,6 +1287,7 @@ def kendala_master():
             feedback_options=feedback_options, actual_options=actual_options,
             is_active_options=is_active_options,
             total_new_today=sum(is_new_flags),
+            last_sync=get_last_sync_time(),
         )
     except Exception as e:
         traceback.print_exc()
@@ -1745,6 +1769,8 @@ def tabel():
     if kelas not in ALLOWED_KELAS:
         kelas = '04'
     error = None; data_html = None; pagination = {}
+    search_query = request.args.get('search', '').strip()
+    total_all_rows = 0  # total sebelum filter search
     try:
         current_page = max(request.args.get('p', 1, type=int), 1)
         per_page = 100
@@ -1754,15 +1780,22 @@ def tabel():
             raise ValueError("Tidak ada data.")
         if kelas in ['05', '04']:
             header = all_data[1] if len(all_data) > 2 else []
-            rows = all_data[2:] if len(all_data) > 2 else []
+            rows   = all_data[2:] if len(all_data) > 2 else []
         else:
             header = all_data[0] if len(all_data) > 1 else []
-            rows = all_data[1:] if len(all_data) > 1 else []
+            rows   = all_data[1:] if len(all_data) > 1 else []
         if not rows:
             raise ValueError("Tidak ada baris data.")
+        total_all_rows = len(rows)
+
+        # ── Server-side search (lintas seluruh data, bukan hanya halaman ini) ──
+        if search_query:
+            sq_lower = search_query.lower()
+            rows = [r for r in rows if any(sq_lower in str(cell).lower() for cell in r)]
+
         total_rows = len(rows)
         total_pages = max((total_rows + per_page - 1) // per_page, 1)
-        if current_page > total_pages: current_page = total_pages
+        if current_page > total_pages: current_page = 1
         start_index = (current_page - 1) * per_page
         paginated = rows[start_index:start_index + per_page]
         df = pd.DataFrame(paginated, columns=header)
@@ -1780,7 +1813,8 @@ def tabel():
         error = f"Gagal memuat data: {e}"
     return render_template(
         "tabel.html", data={kelas: data_html}, user=session['user'],
-        kelas=kelas, error=error, pagination=pagination
+        kelas=kelas, error=error, pagination=pagination,
+        search_query=search_query, total_all_rows=total_all_rows,
     )
 
 @flask_app.route('/filter', methods=['POST'])
