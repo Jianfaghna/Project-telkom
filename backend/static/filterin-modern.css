@@ -5,10 +5,13 @@
    ============================================================ */
 
 :root {
+    /* ── Brand ── */
     --telkom-blue: #0b3d91;
     --telkom-blue-soft: #2c5fb5;
     --telkom-red:  #ff2d2d;
     --accent:      #1abc9c;
+
+    /* ── Surface & text ── */
     --bg:          #f5f7fa;
     --surface:     #ffffff;
     --surface-2:   #fafbfc;
@@ -16,12 +19,40 @@
     --text-muted:  #64748b;
     --border:      #e2e8f0;
     --border-strong: #cbd5e1;
+
+    /* ── Semantic colors (NEW — pakai ini di code baru) ── */
+    --color-primary:        #0b3d91;
+    --color-primary-hover:  #082d6b;
+    --color-secondary:      #64748b;
+    --color-secondary-hover:#475569;
+    --color-success:        #16a34a;
+    --color-success-hover:  #15803d;
+    --color-warning:        #f59e0b;
+    --color-warning-hover:  #d97706;
+    --color-danger:         #dc2626;
+    --color-danger-hover:   #b91c1c;
+    --color-info:           #2563eb;
+    --color-info-hover:     #1d4ed8;
+
+    /* ── Spacing scale (NEW) — 4px base ── */
+    --space-1:  4px;
+    --space-2:  8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    /* ── Shadows ── */
     --shadow-sm: 0 1px 2px rgba(15,23,42,0.06), 0 1px 3px rgba(15,23,42,0.08);
     --shadow-md: 0 4px 12px rgba(15,23,42,0.08);
     --shadow-lg: 0 20px 40px rgba(15,23,42,0.15);
+
+    /* ── Radius ── */
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
+
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -42,6 +73,76 @@ body {
     background-color: var(--bg);
     color: var(--text);
     transition: background-color 0.25s var(--ease);
+}
+
+/* ════════════════════════════════════════════
+   GLOBAL FOCUS STYLE (aksesibilitas keyboard)
+   ──────────────────────────────────────────
+   Setiap link, button, input, select yang difokus pakai keyboard
+   (Tab) akan menampilkan outline biru — tidak muncul saat klik
+   mouse. Ini penting untuk navigasi via keyboard / screen reader.
+   ════════════════════════════════════════════ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid var(--color-info, #2563eb) !important;
+    outline-offset: 2px !important;
+    border-radius: 3px;
+}
+/* Sidebar links pakai offset lebih kecil agar tidak ketabrak border-left */
+.sidebar a:focus-visible,
+.sidebar .submenu-item:focus-visible {
+    outline-offset: -2px !important;
+}
+
+/* ════════════════════════════════════════════
+   KEYBOARD HINT BADGE (kbd chip)
+   ──────────────────────────────────────────
+   Pakai <kbd> atau <span class="kbd"> untuk hint shortcut
+   Contoh: Simpan <kbd>Ctrl</kbd>+<kbd>S</kbd>
+   ════════════════════════════════════════════ */
+kbd, .kbd {
+    display: inline-block;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.28);
+    color: inherit;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.15);
+    margin: 0 1px;
+    vertical-align: middle;
+}
+/* Variant untuk background terang (di luar tombol berwarna) */
+.kbd-light {
+    background: var(--surface-2, #f1f5f9);
+    border-color: var(--border-strong, #cbd5e1);
+    color: var(--text-muted, #64748b);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.05);
+}
+[data-theme="dark"] .kbd-light {
+    background: var(--surface-2, #111827);
+    border-color: var(--border-strong, #475569);
+    color: var(--text-muted, #94a3b8);
+}
+
+/* Screen-reader only helper (untuk elemen icon-only) */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
 }
 
 [data-theme="dark"] .sidebar { background-color: #0a1020; }
@@ -739,3 +840,119 @@ tr.is-new-row td.col-grey {
 [data-theme="dark"] .qh-new    { color: var(--text); }
 [data-theme="dark"] .qh-latest-badge { background: #1e3a5f; color: #93c5fd; }
 [data-theme="dark"] .qe-history-item { border-color: var(--border); }
+
+/* ════════════════════════════════════════════════════════════════
+   BUTTON SYSTEM (utility classes)
+   ────────────────────────────────────────────────────────────────
+   Pakai class .btn + salah satu varian di code BARU. Komponen lama
+   tetap pakai class lamanya — kelas ini opt-in, tidak override.
+
+   Contoh: <button class="btn btn-primary">Simpan</button>
+           <a class="btn btn-secondary btn-sm">Batal</a>
+
+   Varian: primary | secondary | danger | success | warning | ghost
+   Size:   default (h=36) | btn-sm (h=30) | btn-lg (h=44)
+   ════════════════════════════════════════════════════════════════ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    height: 36px;
+    padding: 0 var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s var(--ease),
+                color 0.15s var(--ease),
+                border-color 0.15s var(--ease),
+                transform 0.1s var(--ease),
+                box-shadow 0.15s var(--ease);
+    white-space: nowrap;
+    user-select: none;
+}
+.btn:focus-visible {
+    outline: 2px solid var(--color-info);
+    outline-offset: 2px;
+}
+.btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+.btn:disabled,
+.btn.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ── Sizes ── */
+.btn-sm { height: 30px; padding: 0 12px; font-size: 12px; }
+.btn-lg { height: 44px; padding: 0 22px; font-size: 14px; }
+
+/* ── Variants ── */
+.btn-primary {
+    background: var(--color-primary);
+    color: #fff;
+}
+.btn-primary:hover { background: var(--color-primary-hover); color: #fff; }
+
+.btn-secondary {
+    background: var(--surface, #fff);
+    color: var(--text, #1e293b);
+    border-color: var(--border-strong, #cbd5e1);
+}
+.btn-secondary:hover {
+    background: var(--surface-2, #f1f5f9);
+    border-color: var(--color-secondary-hover);
+}
+
+.btn-danger {
+    background: var(--color-danger);
+    color: #fff;
+}
+.btn-danger:hover { background: var(--color-danger-hover); color: #fff; }
+
+.btn-success {
+    background: var(--color-success);
+    color: #fff;
+}
+.btn-success:hover { background: var(--color-success-hover); color: #fff; }
+
+.btn-warning {
+    background: var(--color-warning);
+    color: #fff;
+}
+.btn-warning:hover { background: var(--color-warning-hover); color: #fff; }
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border-color: transparent;
+}
+.btn-ghost:hover {
+    background: var(--surface-2);
+    color: var(--text);
+}
+
+/* Icon-only button (square) */
+.btn-icon { width: 36px; padding: 0; }
+.btn-icon.btn-sm { width: 30px; }
+.btn-icon.btn-lg { width: 44px; }
+
+/* Dark mode tweaks */
+[data-theme="dark"] .btn-secondary {
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--border-strong);
+}
+[data-theme="dark"] .btn-secondary:hover {
+    background: #22304a;
+}
+[data-theme="dark"] .btn-ghost:hover {
+    background: var(--surface-2);
+}

@@ -785,6 +785,9 @@
                     <button type="button" onclick="cc_selectNone()">Kosong</button>
                 </div>
                 <div id="col-chooser-items"></div>
+                <div style="padding:8px 12px; border-top:1px solid var(--border,#e2e8f0); font-size:11px; color:var(--text-muted,#94a3b8); text-align:right;">
+                    Tutup: <kbd class="kbd-light">Esc</kbd>
+                </div>
             </div>
         </div>
         <div class="spacer"></div>
@@ -985,8 +988,9 @@
 
         <!-- FLOATING SAVE BUTTON -->
         <div class="controls-bar">
-            <button type="submit" class="save-btn">
+            <button type="submit" class="save-btn" title="Klik atau tekan Ctrl+S">
                 <i class="fas fa-save"></i> Simpan Perubahan
+                <kbd style="margin-left:8px;">Ctrl</kbd>+<kbd>S</kbd>
             </button>
         </div>
     </form>

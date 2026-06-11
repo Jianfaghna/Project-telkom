@@ -64,8 +64,9 @@
             <i class="fa-solid fa-microchip logo-icon"></i>
             <span class="logo-name">Filter<span class="logo-highlight">IN</span></span>
 
-            <div id="sidebar-toggle" class="sidebar-toggle-btn" data-testid="sidebar-toggle-btn">
-                <i class="fas fa-chevron-left"></i>
+            <div id="sidebar-toggle" class="sidebar-toggle-btn" data-testid="sidebar-toggle-btn"
+                 role="button" tabindex="0" aria-label="Tutup atau buka sidebar">
+                <i class="fas fa-chevron-left" aria-hidden="true"></i>
             </div>
         </a>
 
@@ -101,7 +102,9 @@
                         <li><a href="{{ url_for('upload') }}" data-testid="nav-upload" class="{% if ep=='upload' %}active-sub{% endif %}"><i class="fa-solid fa-upload"></i> Upload Data</a></li>
                         <li><a href="{{ url_for('kendala_master') }}" data-testid="nav-kendala-master" class="{% if ep=='kendala_master' %}active-sub{% endif %}"><i class="fa-solid fa-file-excel"></i> Sheet Kendala Master</a></li>
                         <li><a href="{{ url_for('unsc') }}" data-testid="nav-unsc" class="{% if ep=='unsc' %}active-sub{% endif %}"><i class="fa-solid fa-file-circle-question"></i> Sheet UNSC</a></li>
+                        {# Disembunyikan sementara — menunggu akses ke data ODP. Kode route & template tetap ada di /verifikasi_odp_full
                         <li><a href="{{ url_for('verifikasi_odp_full') }}" data-testid="nav-verifikasi-odp" class="{% if ep=='verifikasi_odp_full' %}active-sub{% endif %}"><i class="fa-solid fa-user-check"></i> Validasi ODP Full</a></li>
+                        #}
                     </ul>
                 </li>
 
@@ -157,12 +160,13 @@
                 <!-- Online indicator -->
                 <li class="item">
                     <a href="{{ url_for('online_users') }}" id="online-indicator"
-                       data-testid="nav-online" title="Lihat user yang sedang online">
-                        <span class="online-dot-wrap">
+                       data-testid="nav-online" title="Lihat user yang sedang online"
+                       aria-label="Lihat daftar user yang sedang online">
+                        <span class="online-dot-wrap" aria-hidden="true">
                             <span class="online-dot" id="online-dot"></span>
                         </span>
                         <i class="fa-solid fa-users online-icon-collapsed"
-                           style="display:none; font-size:16px;"></i>
+                           style="display:none; font-size:16px;" aria-hidden="true"></i>
                         <span id="online-label">
                             <span id="online-count">—</span> online
                         </span>
@@ -170,13 +174,14 @@
                 </li>
 
                 <li class="item">
-                    <a href="#" id="theme-toggle-btn" data-testid="theme-toggle-btn">
-                        <i class="fa-solid fa-moon" id="theme-icon"></i><span id="theme-label">Dark Mode</span>
+                    <a href="#" id="theme-toggle-btn" data-testid="theme-toggle-btn"
+                       aria-label="Ganti tema terang atau gelap">
+                        <i class="fa-solid fa-moon" id="theme-icon" aria-hidden="true"></i><span id="theme-label">Dark Mode</span>
                     </a>
                 </li>
-                
-                <li class="item"><a href="{{ url_for('ganti_password') }}" data-testid="nav-ganti-password"><i class="fa-solid fa-key"></i><span>Ganti Password</span></a></li>
-                <li class="item"><a href="{{ url_for('logout') }}" data-testid="nav-logout"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></a></li>
+
+                <li class="item"><a href="{{ url_for('ganti_password') }}" data-testid="nav-ganti-password" aria-label="Ganti password"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Ganti Password</span></a></li>
+                <li class="item"><a href="{{ url_for('logout') }}" data-testid="nav-logout" aria-label="Logout dari sesi ini"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>Logout</span></a></li>
             </ul>
         </div>
     </nav>
@@ -218,6 +223,97 @@
         <div class="loading-text" id="global-loading-text">Memproses...</div>
     </div>
 
+    <!-- ── Top progress bar untuk navigasi antar halaman ── -->
+    <div id="page-progress-bar" aria-hidden="true"></div>
+
+    <!-- ── Toast notifikasi shortcut (saat Ctrl+S dipakai pertama kali) ── -->
+    <div id="shortcut-toast" aria-live="polite"></div>
+
+    <script>
+    /* ════════════════════════════════════════════════════════
+       GLOBAL KEYBOARD SHORTCUTS
+       ──────────────────────────────────────────────────────
+       Ctrl+S / Cmd+S → klik tombol .save-btn jika ada di page
+       Esc            → tutup modal logout / col-chooser panel
+       ════════════════════════════════════════════════════════ */
+    (function() {
+        var SHORTCUT_TOAST_SHOWN = 'filterin-shortcut-toast-shown';
+
+        function showShortcutToast(text) {
+            var t = document.getElementById('shortcut-toast');
+            if (!t) return;
+            t.textContent = text;
+            t.classList.add('show');
+            clearTimeout(t._timer);
+            t._timer = setTimeout(function() { t.classList.remove('show'); }, 1800);
+        }
+
+        document.addEventListener('keydown', function(e) {
+            /* ── Ctrl+S / Cmd+S ── */
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&
+                (e.key === 's' || e.key === 'S')) {
+                var saveBtn = document.querySelector('.save-btn, .save-btn-fixed, button.btn-save');
+                if (saveBtn && !saveBtn.disabled) {
+                    e.preventDefault();
+                    saveBtn.click();
+                    showShortcutToast('Menyimpan perubahan...');
+                }
+                return;
+            }
+
+            /* ── Esc ── */
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                /* 1. Tutup modal logout jika sedang tampil */
+                var modal = document.getElementById('logout-modal-overlay');
+                if (modal && modal.classList.contains('show')) {
+                    modal.classList.remove('show');
+                    e.preventDefault();
+                    return;
+                }
+                /* 2. Tutup col-chooser panel yang sedang terbuka (kendalamaster / unsc) */
+                var openPanels = document.querySelectorAll('.col-chooser-panel.show');
+                if (openPanels.length) {
+                    openPanels.forEach(function(p) { p.classList.remove('show'); });
+                    e.preventDefault();
+                    return;
+                }
+                /* 3. Tutup modal-overlay generic */
+                var anyModal = document.querySelector('.modal-overlay.show, .modal-overlay[style*="display: flex"]');
+                if (anyModal) {
+                    anyModal.classList.remove('show');
+                    anyModal.style.display = 'none';
+                    e.preventDefault();
+                }
+            }
+        });
+    })();
+    </script>
+
+    <style>
+    /* ── Toast kecil untuk feedback shortcut ── */
+    #shortcut-toast {
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-20px);
+        background: rgba(15,23,42,0.92);
+        color: #fff;
+        padding: 8px 16px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        z-index: 99999;
+        opacity: 0;
+        transition: opacity 0.2s, transform 0.2s;
+        pointer-events: none;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    #shortcut-toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+    </style>
+
     <!-- Logout confirmation modal -->
     <div class="modal-overlay" id="logout-modal-overlay" data-testid="logout-modal">
         <div class="logout-modal">
@@ -234,24 +330,197 @@
     <script src="{{ url_for('static', filename='filterin-core.js') }}"></script>
 
     <script>
+    /* ════════════════════════════════════════════════════════
+       HEARTBEAT + ONLINE COUNT + OFFLINE DETECTION
+       ──────────────────────────────────────────────────────
+       Setiap 30 detik: kirim heartbeat ke server.
+       Setiap 15 detik: ambil jumlah user online.
+       Jika 2 kali heartbeat gagal berturut-turut → tampilkan
+       indikator "Koneksi terputus" subtle di pojok.
+       ════════════════════════════════════════════════════════ */
     (function() {
+        var failCount = 0;
+        var FAIL_THRESHOLD = 2;
+        var indicatorEl = null;
+
+        function ensureOfflineIndicator() {
+            if (indicatorEl) return indicatorEl;
+            indicatorEl = document.createElement('div');
+            indicatorEl.id = 'connection-offline-indicator';
+            indicatorEl.setAttribute('role', 'status');
+            indicatorEl.setAttribute('aria-live', 'polite');
+            indicatorEl.innerHTML =
+                '<i class="fa-solid fa-wifi-slash" aria-hidden="true"></i>' +
+                '<span>Koneksi terputus — mencoba menyambung kembali...</span>';
+            document.body.appendChild(indicatorEl);
+            return indicatorEl;
+        }
+
+        function showOffline() {
+            var el = ensureOfflineIndicator();
+            el.classList.add('show');
+        }
+        function hideOffline() {
+            if (indicatorEl) indicatorEl.classList.remove('show');
+        }
+
         function sendHeartbeat() {
             fetch('/heartbeat', { method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
-            }).catch(function() {});
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                failCount = 0;
+                hideOffline();
+            })
+            .catch(function() {
+                failCount++;
+                if (failCount >= FAIL_THRESHOLD) showOffline();
+            });
         }
+
         function updateOnlineCount() {
             fetch('/api/online_count')
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
                 .then(function(d) {
                     var el = document.getElementById('online-count');
                     if (el) el.textContent = d.count || 0;
-                }).catch(function() {});
+                }).catch(function() { /* silent — heartbeat sudah handle */ });
         }
+
+        /* Browser-level offline event (network DC) */
+        window.addEventListener('offline', showOffline);
+        window.addEventListener('online',  function() {
+            failCount = 0;
+            sendHeartbeat();   /* langsung verifikasi server reachable */
+        });
+
         sendHeartbeat();
         updateOnlineCount();
         setInterval(sendHeartbeat,      30000);
         setInterval(updateOnlineCount,  15000);
+    })();
+    </script>
+
+    <style>
+    /* Offline indicator — floating bottom-right */
+    #connection-offline-indicator {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #dc2626;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        display: none;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 6px 18px rgba(220,38,38,0.35);
+        z-index: 9998;
+        animation: offlinePulse 1.8s infinite ease-in-out;
+    }
+    #connection-offline-indicator.show { display: inline-flex; }
+    #connection-offline-indicator i { font-size: 16px; }
+    @keyframes offlinePulse {
+        0%, 100% { box-shadow: 0 6px 18px rgba(220,38,38,0.35); }
+        50%      { box-shadow: 0 6px 24px rgba(220,38,38,0.6); }
+    }
+
+    /* ── Top page progress bar (saat navigasi antar halaman) ── */
+    #page-progress-bar {
+        position: fixed;
+        top: 0; left: 0;
+        height: 3px;
+        width: 0%;
+        background: linear-gradient(90deg, #2563eb, #3b82f6 50%, #60a5fa);
+        box-shadow: 0 0 8px rgba(59,130,246,0.6);
+        z-index: 99999;
+        opacity: 0;
+        transition: width 0.25s ease-out, opacity 0.2s ease-out;
+        pointer-events: none;
+    }
+    #page-progress-bar.active {
+        opacity: 1;
+    }
+    </style>
+
+    <script>
+    /* ════════════════════════════════════════════════════════
+       PAGE PROGRESS BAR
+       ──────────────────────────────────────────────────────
+       Bar tipis biru di paling atas — muncul saat user klik
+       link internal / submit form, hilang saat halaman baru load.
+       ════════════════════════════════════════════════════════ */
+    (function() {
+        var bar = document.getElementById('page-progress-bar');
+        if (!bar) return;
+        var width = 0;
+        var timer = null;
+
+        function start() {
+            if (timer) clearInterval(timer);
+            width = 0;
+            bar.style.width = '0%';
+            bar.classList.add('active');
+            /* Trickle: cepat di awal, melambat mendekati 90% */
+            timer = setInterval(function() {
+                if (width < 30)       width += Math.random() * 8;
+                else if (width < 60)  width += Math.random() * 4;
+                else if (width < 85)  width += Math.random() * 1.5;
+                else                  width += 0.2;
+                if (width > 90) width = 90;
+                bar.style.width = width + '%';
+            }, 200);
+        }
+
+        function isInternalLink(a) {
+            if (!a || !a.href) return false;
+            if (a.target && a.target !== '_self') return false;            /* _blank → skip */
+            if (a.hasAttribute('download')) return false;
+            var href = a.getAttribute('href') || '';
+            if (href.startsWith('#'))       return false;                  /* anchor */
+            if (href.startsWith('mailto:')) return false;
+            if (href.startsWith('tel:'))    return false;
+            if (href.startsWith('javascript:')) return false;
+            try {
+                var url = new URL(a.href, window.location.href);
+                if (url.origin !== window.location.origin) return false;   /* eksternal */
+            } catch (e) { return false; }
+            return true;
+        }
+
+        document.addEventListener('click', function(e) {
+            /* Modifier keys → user mau buka di tab/window baru */
+            if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            if (e.button !== 0) return;                                    /* hanya left-click */
+            /* Skip jika klik di dalam tombol toggle sidebar (bukan navigasi) */
+            if (e.target.closest('#sidebar-toggle')) return;
+            /* Skip jika klik elemen dengan data-no-progress (opt-out) */
+            if (e.target.closest('[data-no-progress]')) return;
+            var a = e.target.closest('a');
+            if (!isInternalLink(a)) return;
+            start();
+        }, true);
+
+        /* Form submit → halaman akan reload */
+        document.addEventListener('submit', function(e) {
+            var form = e.target;
+            if (!form || form.tagName !== 'FORM') return;
+            if (form.target && form.target !== '_self') return;
+            start();
+        }, true);
+
+        /* Saat halaman baru di-load atau back/forward, sembunyikan bar */
+        window.addEventListener('pageshow', function() {
+            if (timer) clearInterval(timer);
+            bar.classList.remove('active');
+            bar.style.width = '0%';
+        });
     })();
     </script>
 

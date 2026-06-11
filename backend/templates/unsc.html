@@ -4,8 +4,7 @@
 {% block head_extra %}
 <style>
 /* ── Dark mode patches ── */
-[data-theme="dark"] .filter-card,
-[data-theme="dark"] .zoom-bar-unsc {
+[data-theme="dark"] .filter-card {
     background: var(--surface, #1a2332) !important;
     border-color: var(--border, #2d3748) !important;
     color: var(--text, #e2e8f0) !important;
@@ -18,13 +17,27 @@
     border-color: var(--border-strong, #475569) !important;
     color: var(--text, #e2e8f0) !important;
 }
-[data-theme="dark"] .zoom-bar-unsc label { color: var(--text-muted, #94a3b8) !important; }
-[data-theme="dark"] .zoom-bar-unsc button {
-    background: var(--surface-2, #111827) !important;
-    border-color: var(--border-strong, #475569) !important;
-    color: var(--text, #e2e8f0) !important;
+
+/* ── Mode Cepat tooltip (mirror dari kendalamaster) ── */
+.mode-cepat-wrap { position: relative; display: inline-flex; }
+.mode-cepat-tip {
+    display: none;
+    position: fixed;
+    background: #1e293b;
+    color: #fff;
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    z-index: 9999;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }
-[data-theme="dark"] #zoomValue { color: var(--text-muted, #94a3b8) !important; }
+.mode-cepat-wrap:hover .mode-cepat-tip { display: block; }
+[data-theme="dark"] .mode-cepat-tip { background: #0f172a; color: #e2e8f0; }
+
+/* ── Column hidden state ── */
+.col-hidden { display: none !important; }
 
 /* UNSC header colors */
 [data-theme="dark"] .editable-table th { background: #0b3d91; color: #fff; }
@@ -71,20 +84,6 @@
     color: var(--text-muted, #94a3b8) !important;
 }
 
-/* Zoom bar */
-.zoom-bar-unsc {
-    background: #fff;
-    padding: 10px 20px;
-    border-radius: 8px;
-    margin-bottom: 15px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    border: 1px solid #ddd;
-}
-.zoom-bar-unsc label { font-weight: 600; font-size: 13px; color: #555; }
-.zoom-bar-unsc button { background: #f1f1f1; border: 1px solid #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
 </style>
 {% endblock %}
 
@@ -141,13 +140,38 @@
         </form>
     </div>
 
-    <!-- ZOOM -->
-    <div class="zoom-bar-unsc">
-        <label><i class="fas fa-search-plus"></i> Ukuran Tabel:</label>
-        <input type="range" id="tableZoomSlider" min="0.6" max="1.2" step="0.1" value="1" style="cursor:pointer; width:150px;">
-        <span id="zoomValue" style="font-size:12px; font-weight:500;">100%</span>
-        <button onclick="resetZoom()">Reset</button>
+    <!-- TOOLBAR: Mode Cepat + Pilih Kolom -->
+    {% if data %}
+    <div class="toolbar-row" style="margin-bottom:14px; overflow:visible;">
+        <div class="mode-cepat-wrap">
+            <button type="button" class="toolbar-btn" id="btn-quick-mode-unsc" onclick="toggleQuickModeUNSC()" data-testid="btn-quick-mode-unsc">
+                <i class="fa-solid fa-bolt"></i> Mode Cepat
+            </button>
+            <span class="mode-cepat-tip" id="mode-cepat-tip-unsc">
+                Tampilkan hanya kolom penting untuk kerja
+            </span>
+        </div>
+        <div class="col-chooser">
+            <button type="button" class="col-chooser-btn" onclick="toggleColChooserUNSC(event)" data-testid="btn-col-chooser-unsc">
+                <i class="fa-solid fa-table-columns"></i> Pilih Kolom
+                <i class="fa-solid fa-chevron-down" style="font-size:10px;"></i>
+            </button>
+            <div class="col-chooser-panel" id="col-chooser-panel-unsc">
+                <div class="col-chooser-actions">
+                    <button type="button" onclick="cc_unsc_selectAll()">Semua</button>
+                    <button type="button" onclick="cc_unsc_selectEssential()" class="primary">Hanya Kerja</button>
+                    <button type="button" onclick="cc_unsc_selectNone()">Kosong</button>
+                </div>
+                <div id="col-chooser-items-unsc"></div>
+                <div style="padding:8px 12px; border-top:1px solid var(--border,#e2e8f0); font-size:11px; color:var(--text-muted,#94a3b8); text-align:right;">
+                    Tutup: <kbd class="kbd-light">Esc</kbd>
+                </div>
+            </div>
+        </div>
+        <div class="spacer"></div>
+        <span class="chip-count">{{ pagination.total_rows or 0 }} order</span>
     </div>
+    {% endif %}
 
     <!-- TABEL -->
     <form action="{{ url_for('update_unsc') }}" method="POST">
@@ -178,7 +202,7 @@
                                     {% elif 'AODM' in h or 'GOLIVE' in h %}
                                         {% set hc = 'header-darkblue' %}
                                     {% endif %}
-                                    <th class="{{ hc }}">{{ h }}</th>
+                                    <th class="{{ hc }} col-h-{{ loop.index0 }}" data-col="{{ h }}">{{ h }}</th>
                                 {% endfor %}
                             </tr>
                         </thead>
@@ -189,7 +213,7 @@
                                 <td style="text-align:center; font-weight:bold;">{{ loop.index + pagination.start_index }}</td>
                                 {% for i in range(header|length) %}
                                     {% set ch = header[i] %}
-                                    <td title="{{ row[i] }}">
+                                    <td class="col-c-{{ i }}" title="{{ row[i] }}" data-col="{{ ch }}">
                                         {% if 'STATUS' in ch %}
                                             <select name="{{ ch }}[{{ row_number }}]" class="feedback-select"
                                                     onchange="updateColor(this); handleInputChange(this);">
@@ -224,8 +248,9 @@
         </div>
 
         <div class="controls-bar">
-            <button type="submit" class="save-btn">
+            <button type="submit" class="save-btn" title="Klik atau tekan Ctrl+S">
                 <i class="fas fa-save"></i> Simpan Perubahan
+                <kbd style="margin-left:8px;">Ctrl</kbd>+<kbd>S</kbd>
             </button>
         </div>
     </form>
@@ -271,21 +296,6 @@
 </div>
 
 <script>
-// Zoom
-const zoomSlider = document.getElementById('tableZoomSlider');
-const zoomDisplay = document.getElementById('zoomValue');
-function updateTableScale(v) {
-    document.documentElement.style.setProperty('--table-scale', v);
-    if (zoomDisplay) zoomDisplay.textContent = Math.round(v * 100) + '%';
-    localStorage.setItem('tableScale', v);
-}
-if (zoomSlider) {
-    const saved = localStorage.getItem('tableScale');
-    if (saved) { zoomSlider.value = saved; updateTableScale(saved); }
-    zoomSlider.addEventListener('input', function() { updateTableScale(this.value); });
-}
-window.resetZoom = function() { if (zoomSlider) { zoomSlider.value = 1; updateTableScale(1); } };
-
 // Input handler
 function handleInputChange(el) {
     el.closest('tr').classList.add('is-dirty');
@@ -340,9 +350,108 @@ function jumpToPage() {
     if (p) { const u = new URL(window.location.href); u.searchParams.set('p',p); window.location.href = u.toString(); }
 }
 
+// ════════════════════════════════════════════════════════════
+// COLUMN CHOOSER + MODE CEPAT (mirror dari kendalamaster)
+// ════════════════════════════════════════════════════════════
+const HEADERS_UNSC = {{ header|tojson }};
+const ESSENTIAL_COLS_UNSC = [
+    'ORDER_ID', 'NAME',
+    'STATUS RESUME', 'VALIDASI ODP (TA)', 'STATUS',
+    'VALIDASI TSEL', 'STATUS IHLD', 'STATUS (DataAODM)', 'VALIDASI ROC',
+    'FEEDBACK ASO', 'NOTES FBB'
+];
+const CC_KEY_UNSC = 'filterin-unsc-cols-v1';
+const QM_KEY_UNSC = 'filterin-unsc-quick-mode';
+
+function cc_unsc_state() {
+    try { return JSON.parse(localStorage.getItem(CC_KEY_UNSC) || 'null') || null; }
+    catch(e) { return null; }
+}
+function cc_unsc_save(arr) { localStorage.setItem(CC_KEY_UNSC, JSON.stringify(arr)); }
+function cc_unsc_getVisible() {
+    const s = cc_unsc_state();
+    if (!s) return HEADERS_UNSC.slice();
+    return HEADERS_UNSC.filter(h => s.includes(h));
+}
+function cc_unsc_apply() {
+    const visible = cc_unsc_getVisible();
+    HEADERS_UNSC.forEach((h, i) => {
+        document.querySelectorAll('.col-c-'+i+', .col-h-'+i).forEach(el => {
+            el.classList.toggle('col-hidden', !visible.includes(h));
+        });
+    });
+}
+function cc_unsc_render() {
+    const box = document.getElementById('col-chooser-items-unsc');
+    if (!box) return;
+    const visible = cc_unsc_getVisible();
+    box.innerHTML = HEADERS_UNSC.map(h =>
+        `<label><input type="checkbox" ${visible.includes(h)?'checked':''} onchange="cc_unsc_toggle('${h.replace(/'/g,"\\'")}', this.checked)"> ${h}</label>`
+    ).join('');
+}
+window.cc_unsc_toggle = function(h, on) {
+    const cur = cc_unsc_getVisible();
+    const next = on ? Array.from(new Set([...cur, h])) : cur.filter(x => x !== h);
+    cc_unsc_save(next); cc_unsc_apply();
+};
+window.cc_unsc_selectAll = function() {
+    cc_unsc_save(HEADERS_UNSC.slice()); cc_unsc_render(); cc_unsc_apply();
+};
+window.cc_unsc_selectEssential = function() {
+    cc_unsc_save(HEADERS_UNSC.filter(h => ESSENTIAL_COLS_UNSC.includes(h)));
+    cc_unsc_render(); cc_unsc_apply();
+};
+window.cc_unsc_selectNone = function() {
+    cc_unsc_save([]); cc_unsc_render(); cc_unsc_apply();
+};
+window.toggleColChooserUNSC = function(e) {
+    e.stopPropagation();
+    document.getElementById('col-chooser-panel-unsc').classList.toggle('show');
+};
+window.toggleQuickModeUNSC = function() {
+    const cur = localStorage.getItem(QM_KEY_UNSC) === '1';
+    const next = !cur;
+    localStorage.setItem(QM_KEY_UNSC, next ? '1' : '0');
+    document.getElementById('btn-quick-mode-unsc').classList.toggle('active', next);
+    if (next) cc_unsc_selectEssential(); else cc_unsc_selectAll();
+};
+
+/* Tutup panel saat klik di luar */
+document.addEventListener('click', (e) => {
+    const p = document.getElementById('col-chooser-panel-unsc');
+    if (p && p.classList.contains('show') && !e.target.closest('.col-chooser')) {
+        p.classList.remove('show');
+    }
+});
+
+/* Positioning tooltip Mode Cepat (mengikuti pendekatan kendalamaster — fixed position) */
+function initModeCepatTipUNSC() {
+    const wrap = document.querySelector('.mode-cepat-wrap');
+    const tip  = document.getElementById('mode-cepat-tip-unsc');
+    if (!wrap || !tip) return;
+    wrap.addEventListener('mouseenter', () => {
+        const r = wrap.getBoundingClientRect();
+        tip.style.left = (r.left + r.width / 2) + 'px';
+        tip.style.top  = (r.bottom + 8) + 'px';
+        tip.style.transform = 'translateX(-50%)';
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.feedback-select').forEach(updateColor);
-    setInterval(fetchUpdates, 10000);
+    /* Polling 30 detik — sebelumnya 10 detik. Cukup untuk update real-time
+       tanpa menghabiskan quota Google Sheet API saat banyak user aktif. */
+    setInterval(fetchUpdates, 30000);
+
+    /* Init column chooser & restore state */
+    cc_unsc_render();
+    cc_unsc_apply();
+    /* Restore Quick Mode state */
+    if (localStorage.getItem(QM_KEY_UNSC) === '1') {
+        const btn = document.getElementById('btn-quick-mode-unsc');
+        if (btn) btn.classList.add('active');
+    }
+    initModeCepatTipUNSC();
 });
 </script>
 {% endblock %}

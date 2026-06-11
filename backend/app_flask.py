@@ -2843,34 +2843,6 @@ def recap():
 # =====================================================================
 # ROUTES - PLACEHOLDERS
 # =====================================================================
-@flask_app.route('/summary')
-@login_required
-def summary(): return render_template('summary.html', header1=[], data1=[])
-
-@flask_app.route('/tati')
-@login_required
-def tati(): return render_template('tati.html', header1=[], data1=[])
-
-@flask_app.route('/lapvalidasiodp')
-@login_required
-def lapvalidasiodp(): return render_template('lapvalidasiodp.html', header1=[], data1=[])
-
-@flask_app.route('/newsummarykendala')
-@login_required
-def newsummarykendala(): return render_template('newsummarykendala.html', header1=[], data1=[])
-
-@flask_app.route('/psretti')
-@login_required
-def psretti(): return render_template('psretti.html', header1=[], data1=[])
-
-@flask_app.route('/wokendala')
-@login_required
-def wokendala(): return render_template('wokendala.html', header1=[], data1=[])
-
-@flask_app.route('/datel')
-@login_required
-def datel(): return render_template("datel.html", user=session.get('user')) if Path(ROOT_DIR / 'templates/datel.html').exists() else ("Halaman datel belum tersedia", 200)
-
 @flask_app.route('/verifikasi_odp_full')
 @login_required
 def verifikasi_odp_full(): return render_template('verifikasi_odp_full.html', header=[], data=[])
