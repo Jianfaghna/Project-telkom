@@ -788,10 +788,12 @@ def hitung_rumus_otomatis(df):
 @flask_app.context_processor
 def inject_globals():
     user = session.get('user')
+    admin_tg_username = os.environ.get('ADMIN_TELEGRAM_USERNAME', '').strip()
     return dict(
         user_nama=user.get('nama') if user else None,
         user_role=user.get('role') if user else None,
         csrf_token=generate_csrf,
+        admin_telegram_username=admin_tg_username,
     )
 
 @flask_app.before_request
