@@ -465,6 +465,21 @@ def role_required(*roles):
         return wrap
     return deco
 
+def api_role_required(*roles):
+    """Variant JSON untuk endpoint AJAX/API. Return 403 JSON, bukan redirect."""
+    def deco(f):
+        @wraps(f)
+        def wrap(*a, **kw):
+            if 'user' not in session:
+                return jsonify(success=False, error='unauthenticated',
+                               message='Sesi Anda telah berakhir. Silakan login ulang.'), 401
+            if session['user'].get('role') not in roles:
+                return jsonify(success=False, error='forbidden',
+                               message='Akses ditolak. Peran Anda tidak diizinkan melakukan aksi ini.'), 403
+            return f(*a, **kw)
+        return wrap
+    return deco
+
 # =====================================================================
 # AUDIT LOG
 # =====================================================================
@@ -1412,6 +1427,7 @@ def order_history(order_id):
 
 @flask_app.route('/lock', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def api_lock():
     """Acquire soft lock on a row before editing."""
     data = request.get_json() or {}
@@ -1429,6 +1445,7 @@ def api_lock():
 
 @flask_app.route('/unlock', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def api_unlock():
     data = request.get_json() or {}
     sheet_name = data.get('sheet_name')
@@ -1439,6 +1456,7 @@ def api_unlock():
 
 @flask_app.route('/update_kendala', methods=['POST'])
 @login_required
+@role_required('admin', 'operator')
 def update_kendala():
     """Legacy bulk update (form-encoded col[row]=value)."""
     try:
@@ -1476,6 +1494,7 @@ def update_kendala():
 
 @flask_app.route('/update_kendala_row', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def api_update_kendala_row():
     """Quick-edit save: JSON {row_num, row_key(ORDER_ID), updates:{col:val}}."""
     data = request.get_json(force=True) or {}
@@ -1492,12 +1511,18 @@ def api_update_kendala_row():
     try:
         with db_cursor() as (conn, cur):
             cur.execute(
-                "SELECT locked_by FROM edit_locks WHERE sheet_name=%s AND row_key=%s",
+                "SELECT locked_by, locked_by_nama, locked_at FROM edit_locks WHERE sheet_name=%s AND row_key=%s",
                 (sheet, row_key)
             )
             lk = cur.fetchone()
         if lk and lk['locked_by'] != session['user']['username']:
-            return jsonify({'ok': False, 'error': f"Row dikunci oleh {lk['locked_by']}. Refresh halaman."}), 409
+            nama = lk.get('locked_by_nama') or lk['locked_by']
+            locked_at = lk.get('locked_at')
+            waktu = locked_at.strftime('%H:%M') if locked_at else '-'
+            return jsonify({
+                'ok': False,
+                'error': f"Row ini sedang diedit oleh {nama} sejak {waktu}. Perubahan Anda tidak dapat disimpan untuk mencegah tabrakan data. Silakan refresh halaman untuk melihat perubahan terbaru."
+            }), 409
     except Exception:
         pass
 
@@ -1707,6 +1732,7 @@ Ganti dengan:
 
 @flask_app.route('/update_unsc', methods=['POST'])
 @login_required
+@role_required('admin', 'operator')
 def update_unsc():
     try:
         updates_by_row = {}
@@ -1744,12 +1770,14 @@ def update_unsc():
 # =====================================================================
 @flask_app.route('/sync-bima', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def api_sync_bima():
     result = sync_bima_to_kendala()
     return jsonify(result), (200 if result['status'] == 'success' else 500)
 
 @flask_app.route('/move-to-unsc', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def api_move_to_unsc():
     result = move_kendala_to_unsc()
     return jsonify(result), (200 if result['status'] == 'success' else 500)
@@ -1761,6 +1789,7 @@ ALLOWED_KELAS = {'04', '05', '06'}
 
 @flask_app.route('/upload')
 @login_required
+@role_required('admin', 'operator')
 def upload():
     return render_template("upload.html", user=session['user'])
 
@@ -1821,6 +1850,7 @@ def tabel():
 
 @flask_app.route('/filter', methods=['POST'])
 @login_required
+@role_required('admin', 'operator')
 def filter_data():
     kelas = request.form.get('kelas', '')
     if kelas not in ALLOWED_KELAS:
@@ -1871,6 +1901,7 @@ def filter_data():
 
 @flask_app.route('/hapus_kolom', methods=['POST'])
 @login_required
+@role_required('admin', 'operator')
 def hapus_kolom():
     kelas = request.form.get('kelas', '')
     if kelas not in ALLOWED_KELAS:
@@ -2176,10 +2207,14 @@ def admin_users():
     """Halaman manajemen user — hanya admin."""
     try:
         with db_cursor() as (conn, cur):
-            cur.execute(
-                "SELECT id, nama, username, role, created_at, last_login "
-                "FROM users ORDER BY role, nama"
-            )
+            cur.execute("""
+                SELECT u.id, u.nama, u.username, u.role, u.created_at, u.last_login,
+                       CASE WHEN s.last_seen >= NOW() - INTERVAL 2 MINUTE
+                            THEN 1 ELSE 0 END AS is_online
+                FROM users u
+                LEFT JOIN user_sessions s ON s.username = u.username
+                ORDER BY u.role, u.nama
+            """)
             users = cur.fetchall()
     except Exception as e:
         flash(f'Gagal ambil data user: {e}', 'error')
@@ -2532,6 +2567,7 @@ def kpi_detail(kpi_type):
 
 @flask_app.route('/kpi/<kpi_type>/upload', methods=['POST'])
 @login_required
+@role_required('admin', 'operator')
 def kpi_upload(kpi_type):
     """Upload Excel KPI — replace all data di sheet Google Sheets."""
     if kpi_type not in KPI_TYPES:
@@ -2874,6 +2910,7 @@ def watchlist_get():
  
 @flask_app.route('/api/watchlist/add', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def watchlist_add():
     """Tambah order ke watchlist."""
     data       = request.get_json() or {}
@@ -2939,6 +2976,7 @@ def watchlist_add():
  
 @flask_app.route('/api/watchlist/remove', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def watchlist_remove():
     """Hapus dari watchlist (hanya yang punya flag, atau admin)."""
     data     = request.get_json() or {}

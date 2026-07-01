@@ -716,6 +716,9 @@ function deleteAnnouncement(id) {
 ════════════════════════════════════════════ #}
 const CURRENT_USER = "{{ session.user.username }}";
 const IS_ADMIN     = {{ 'true' if session.user.role == 'admin' else 'false' }};
+/* IS_VIEWER: hide tombol write action untuk role viewer (koordinasi UI dengan backend guard) */
+const IS_VIEWER    = {{ 'true' if session.user.role == 'viewer' else 'false' }};
+const CAN_WRITE    = !IS_VIEWER;  /* admin + operator */
  
 function loadWatchlist() {
     fetch('/api/watchlist')
@@ -728,13 +731,14 @@ function loadWatchlist() {
                     <i class="fa-solid fa-flag" style="opacity:0.3;"></i><br>
                     Belum ada order yang di-flag
                 </div>
+                ${CAN_WRITE ? `
                 <div style="text-align:center;margin-top:10px;">
                     <button onclick="openAddWatchlist()"
                         style="padding:7px 16px;background:#f59e0b;color:#fff;border:none;
                                border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">
                         <i class="fa-solid fa-plus"></i> Flag Order
                     </button>
-                </div>`;
+                </div>` : ''}`;
                 return;
             }
             el.innerHTML = `
@@ -765,13 +769,14 @@ function loadWatchlist() {
                     </div>`;
                 }).join('')}
             </div>
+            ${CAN_WRITE ? `
             <div style="text-align:right;margin-top:10px;">
                 <button onclick="openAddWatchlist()"
                     style="padding:6px 14px;background:#f59e0b;color:#fff;border:none;
                            border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">
                     <i class="fa-solid fa-plus"></i> Flag Order
                 </button>
-            </div>`;
+            </div>` : ''}`;
         })
         .catch(() => {
             document.getElementById('wl-list').innerHTML =

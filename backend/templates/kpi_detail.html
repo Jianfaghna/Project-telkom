@@ -321,7 +321,8 @@
         {% endif %}
     </div>
 
-    <!-- Upload form -->
+    <!-- Upload form — hanya admin & operator -->
+    {% if user_role in ['admin', 'operator'] %}
     <div class="kpi-upload-card">
         <h2>
             <i class="fa-solid fa-cloud-upload-alt" style="color:{{ info.color }};"></i>
@@ -363,6 +364,15 @@
             </div>
         </form>
     </div>
+    {% else %}
+    <!-- Info banner untuk viewer -->
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #3b82f6;
+                border-radius:8px; padding:12px 16px; margin-bottom:14px;
+                display:flex; align-items:center; gap:10px; font-size:13px; color:#1e40af;">
+        <i class="fa-solid fa-eye" style="font-size:16px;"></i>
+        <span><strong>Mode Viewer</strong> — Anda hanya dapat melihat data {{ info.label }}. Untuk mengupload data baru, hubungi Admin atau Operator.</span>
+    </div>
+    {% endif %}
 
     <!-- Tabel data -->
     <div class="kpi-table-section">

@@ -99,7 +99,9 @@
                                 <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Web KPRO
                             </a>
                         </li>
+                        {% if user_role in ['admin', 'operator'] %}
                         <li><a href="{{ url_for('upload') }}" data-testid="nav-upload" class="{% if ep=='upload' %}active-sub{% endif %}"><i class="fa-solid fa-upload"></i> Upload Data</a></li>
+                        {% endif %}
                         <li><a href="{{ url_for('kendala_master') }}" data-testid="nav-kendala-master" class="{% if ep=='kendala_master' %}active-sub{% endif %}"><i class="fa-solid fa-file-excel"></i> Sheet Kendala Master</a></li>
                         <li><a href="{{ url_for('unsc') }}" data-testid="nav-unsc" class="{% if ep=='unsc' %}active-sub{% endif %}"><i class="fa-solid fa-file-circle-question"></i> Sheet UNSC</a></li>
                         {# Disembunyikan sementara — menunggu akses ke data ODP. Kode route & template tetap ada di /verifikasi_odp_full
@@ -505,14 +507,38 @@
             var a = e.target.closest('a');
             if (!isInternalLink(a)) return;
             start();
+
+            /* Defer check: kalau ada handler lain yang preventDefault (misal modal
+               konfirmasi logout), berarti navigasi TIDAK jadi terjadi → cancel bar */
+            setTimeout(function() {
+                if (e.defaultPrevented) {
+                    if (timer) clearInterval(timer);
+                    bar.classList.remove('active');
+                    bar.style.width = '0%';
+                }
+            }, 0);
         }, true);
 
-        /* Form submit → halaman akan reload */
+        /* Form submit → halaman akan reload
+           Catatan: pakai capture phase (true) supaya kita catch submit lebih dulu,
+           tapi setelah semua handler lain jalan kita cek `defaultPrevented` —
+           kalau form batal submit (misal validasi gagal), progress bar dibatalkan. */
         document.addEventListener('submit', function(e) {
             var form = e.target;
             if (!form || form.tagName !== 'FORM') return;
             if (form.target && form.target !== '_self') return;
             start();
+
+            /* Defer ke microtask berikutnya — biar handler form (yang mungkin
+               preventDefault) sudah selesai jalan. Kalau default dibatalkan,
+               berarti form TIDAK jadi submit → cancel progress bar. */
+            setTimeout(function() {
+                if (e.defaultPrevented) {
+                    if (timer) clearInterval(timer);
+                    bar.classList.remove('active');
+                    bar.style.width = '0%';
+                }
+            }, 0);
         }, true);
 
         /* Saat halaman baru di-load atau back/forward, sembunyikan bar */

@@ -577,7 +577,8 @@
     </div>
     {% endif %}
 
-    <!-- SYNC + MOVE AUTOMATION CARDS -->
+    <!-- SYNC + MOVE AUTOMATION CARDS — hanya admin & operator -->
+    {% if user_role in ['admin', 'operator'] %}
     <div class="automation-container">
         <div class="sync-card-modern sync">
             <div class="sci"><i class="fas fa-sync-alt"></i></div>
@@ -613,6 +614,17 @@
             </div>
         </div>
     </div>
+    {% endif %}
+
+    <!-- Info banner untuk viewer -->
+    {% if user_role == 'viewer' %}
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #3b82f6;
+                border-radius:8px; padding:12px 16px; margin-bottom:14px;
+                display:flex; align-items:center; gap:10px; font-size:13px; color:#1e40af;">
+        <i class="fa-solid fa-eye" style="font-size:16px;"></i>
+        <span><strong>Mode Viewer</strong> — Anda hanya dapat melihat data. Untuk mengubah data atau melakukan sinkronisasi, hubungi Admin atau Operator.</span>
+    </div>
+    {% endif %}
 
     <!-- FILTER BAR -->
     <div class="filter-card" style="background:var(--surface,#fff); padding:16px 20px; margin-bottom:14px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06); border:1px solid var(--border,#e2e8f0);">
@@ -829,9 +841,11 @@
                                     {% endif %}
                                     <th class="{{ hc }} col-h-{{ loop.index0 }}" data-col="{{ h }}">{{ h }}</th>
                                 {% endfor %}
+                                {% if user_role in ['admin', 'operator'] %}
                                 <th class="col-edit-sticky" title="Edit baris">
                                     <i class="fa-solid fa-pen-to-square" style="font-size:13px;"></i>
                                 </th>
+                                {% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -952,7 +966,8 @@
                                     </td>
                                 {% endfor %}
 
-                                {# ===== TOMBOL PENCIL EDIT ===== #}
+                                {# ===== TOMBOL PENCIL EDIT — hanya admin & operator ===== #}
+                                {% if user_role in ['admin', 'operator'] %}
                                 <td class="col-edit-sticky">
                                     {% if not order_id or not order_id|trim %}
                                         <span style="color:#cbd5e1; font-size:11px;">—</span>
@@ -971,6 +986,7 @@
                                         </button>
                                     {% endif %}
                                 </td>
+                                {% endif %}
 
                             </tr>
                         {% endfor %}
@@ -986,13 +1002,15 @@
             {% endif %}
         </div>
 
-        <!-- FLOATING SAVE BUTTON -->
+        <!-- FLOATING SAVE BUTTON — hanya admin & operator -->
+        {% if user_role in ['admin', 'operator'] %}
         <div class="controls-bar">
             <button type="submit" class="save-btn" title="Klik atau tekan Ctrl+S">
                 <i class="fas fa-save"></i> Simpan Perubahan
                 <kbd style="margin-left:8px;">Ctrl</kbd>+<kbd>S</kbd>
             </button>
         </div>
+        {% endif %}
     </form>
 
     <!-- PAGINATION -->
@@ -1044,14 +1062,31 @@
 {% block scripts_extra %}
 <script>
 // =====================================================
+// VIEWER MODE — disable semua form control (defense in depth)
+// Backend sudah proteksi endpoint, ini hanya UX consistency
+// =====================================================
+{% if user_role == 'viewer' %}
+(function() {
+    document.querySelectorAll('.editable-table input, .editable-table select, .editable-table textarea')
+        .forEach(el => {
+            el.setAttribute('readonly', 'readonly');
+            el.setAttribute('disabled', 'disabled');
+            el.style.cursor = 'not-allowed';
+        });
+})();
+{% endif %}
+
+// =====================================================
 // 5. QUICK EDIT MODAL — inisialisasi
 // =====================================================
+{% if user_role in ['admin', 'operator'] %}
 if (typeof window.initQuickEdit === 'function') {
     window.initQuickEdit({
         feedback_options: {{ feedback_options|tojson }},
         actual_options:   {{ actual_options|tojson }},
     });
 }
+{% endif %}
 // =====================================================
 function getCurrentDateTime() {
     const n = new Date();

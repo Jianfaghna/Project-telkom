@@ -43,10 +43,103 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; font-weight: 700; color: #fff;
     margin-bottom: 10px;
+    position: relative;
 }
 .avatar-admin    { background: linear-gradient(135deg, #dc2626, #ef4444); }
 .avatar-operator { background: linear-gradient(135deg, #2563eb, #3b82f6); }
 .avatar-viewer   { background: linear-gradient(135deg, #059669, #10b981); }
+
+/* Online dot di avatar */
+.avatar-status-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--surface, #fff);
+    background: #94a3b8;  /* abu-abu = offline */
+}
+.avatar-status-dot.online {
+    background: #22c55e;  /* hijau = online */
+    box-shadow: 0 0 0 2px rgba(34,197,94,0.25);
+    animation: pulse-online-dot 2s infinite;
+}
+@keyframes pulse-online-dot {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(34,197,94,0.25); }
+    50%      { box-shadow: 0 0 0 5px rgba(34,197,94,0.1); }
+}
+[data-theme="dark"] .avatar-status-dot {
+    border-color: var(--surface, #1a2332);
+}
+
+/* ── Toolbar (search + filter) ── */
+.user-toolbar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.user-toolbar .search-wrap {
+    flex: 1;
+    min-width: 240px;
+    position: relative;
+}
+.user-toolbar .search-wrap input {
+    width: 100%;
+    padding: 10px 12px 10px 38px;
+    border: 1px solid var(--border, #cbd5e1);
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--surface, #fff);
+    color: var(--text, #1e293b);
+}
+.user-toolbar .search-wrap input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+}
+.user-toolbar .search-wrap i {
+    position: absolute;
+    left: 13px; top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 13px;
+}
+.user-toolbar select {
+    padding: 10px 12px;
+    border: 1px solid var(--border, #cbd5e1);
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--surface, #fff);
+    color: var(--text, #1e293b);
+    cursor: pointer;
+    min-width: 180px;
+}
+.user-toolbar select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+}
+[data-theme="dark"] .user-toolbar .search-wrap input,
+[data-theme="dark"] .user-toolbar select {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+/* Empty result state */
+.empty-result {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted, #94a3b8);
+    background: var(--surface, #fff);
+    border: 1px dashed var(--border, #cbd5e1);
+    border-radius: 10px;
+}
+.empty-result i { font-size: 32px; opacity: 0.4; display: block; margin-bottom: 8px; }
 
 .user-name { font-weight: 700; font-size: 15px; color: var(--text, #1e293b); margin-bottom: 2px; }
 .user-uname { font-size: 12px; color: var(--text-muted, #64748b); margin-bottom: 8px; }
@@ -316,18 +409,45 @@
         </form>
     </div>
 
+    <!-- Toolbar: search + filter role -->
+    <div class="user-toolbar">
+        <div class="search-wrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="user-search"
+                   placeholder="Cari nama atau username..."
+                   autocomplete="off">
+        </div>
+        <select id="role-filter">
+            <option value="">Filter: Semua Peran</option>
+            <option value="admin">Hanya Admin</option>
+            <option value="operator">Hanya Operator</option>
+            <option value="viewer">Hanya Viewer</option>
+        </select>
+        <select id="status-filter">
+            <option value="">Status: Semua</option>
+            <option value="online">Hanya Online</option>
+            <option value="offline">Hanya Offline</option>
+        </select>
+    </div>
+
     <!-- Daftar user -->
-    <div class="user-grid">
+    <div class="user-grid" id="user-grid">
         {% for u in users %}
         {% set is_self = (u.username == current_user.username) %}
-        <div class="user-card {% if is_self %}is-self{% endif %}">
+        <div class="user-card {% if is_self %}is-self{% endif %}"
+             data-nama="{{ (u.nama or '')|lower }}"
+             data-username="{{ (u.username or '')|lower }}"
+             data-role="{{ u.role or 'operator' }}"
+             data-status="{% if u.is_online %}online{% else %}offline{% endif %}">
             {% if is_self %}
                 <span class="self-badge">Anda</span>
             {% endif %}
 
-            <!-- Avatar -->
+            <!-- Avatar dengan online dot -->
             <div class="user-avatar avatar-{{ u.role or 'operator' }}">
                 {{ (u.nama or u.username)[0]|upper }}
+                <span class="avatar-status-dot {% if u.is_online %}online{% endif %}"
+                      title="{% if u.is_online %}Sedang online{% else %}Offline{% endif %}"></span>
             </div>
 
             <div class="user-name">{{ u.nama }}</div>
@@ -373,6 +493,12 @@
             </div>
         </div>
         {% endfor %}
+
+        <!-- Empty state — muncul kalau filter tidak match -->
+        <div class="empty-result" id="empty-result" style="display:none;">
+            <i class="fa-solid fa-user-slash"></i>
+            <div>Tidak ada user yang cocok dengan filter.</div>
+        </div>
     </div>
 
 </div>
@@ -494,5 +620,46 @@ document.addEventListener('keydown', e => {
         });
     }
 });
+
+// ════════════════════════════════════════════════════════
+// SEARCH + FILTER ROLE + FILTER STATUS (client-side)
+// ════════════════════════════════════════════════════════
+(function() {
+    const searchInput  = document.getElementById('user-search');
+    const roleFilter   = document.getElementById('role-filter');
+    const statusFilter = document.getElementById('status-filter');
+    const cards        = document.querySelectorAll('.user-card');
+    const emptyResult  = document.getElementById('empty-result');
+
+    function applyFilters() {
+        const query  = (searchInput.value || '').trim().toLowerCase();
+        const role   = roleFilter.value;
+        const status = statusFilter.value;
+        let visibleCount = 0;
+
+        cards.forEach(card => {
+            const nama     = card.dataset.nama || '';
+            const username = card.dataset.username || '';
+            const cardRole = card.dataset.role || '';
+            const cardSt   = card.dataset.status || '';
+
+            const matchSearch = !query ||
+                                nama.includes(query) ||
+                                username.includes(query);
+            const matchRole   = !role   || cardRole === role;
+            const matchStatus = !status || cardSt === status;
+
+            const visible = matchSearch && matchRole && matchStatus;
+            card.style.display = visible ? '' : 'none';
+            if (visible) visibleCount++;
+        });
+
+        emptyResult.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+
+    if (searchInput)  searchInput.addEventListener('input',  applyFilters);
+    if (roleFilter)   roleFilter.addEventListener('change',  applyFilters);
+    if (statusFilter) statusFilter.addEventListener('change', applyFilters);
+})();
 </script>
 {% endblock %}

@@ -292,6 +292,77 @@
     }
   };
 
+  // ═══════════════════════════════════════════════════════
+  // Optimistic UI update — perbarui baris tabel setelah Quick Edit
+  // save. PENTING: JANGAN dispatch 'change' event native karena akan
+  // trigger handleInputChange → mark row is-dirty → memunculkan
+  // floating "Simpan Perubahan" bar (yang khusus untuk inline edit).
+  // Sebagai gantinya, panggil color-update function langsung.
+  // ═══════════════════════════════════════════════════════
+  function updateRowInTable(rowNum, updates) {
+    if (!rowNum || !updates) return;
+
+    const table = document.querySelector('.editable-table');
+    if (!table) return;
+
+    const suffix = `[${rowNum}]`;
+    let touched = [];
+
+    Object.entries(updates).forEach(([col, val]) => {
+      const name = `${col}${suffix}`;
+      const el = table.querySelector(`[name="${CSS.escape(name)}"]`);
+      if (!el) return;
+
+      // Set value langsung tanpa fire event
+      el.value = val;
+      touched.push(el);
+
+      // Kalau select, panggil color updater manual (tanpa trigger handleInputChange)
+      if (el.tagName === 'SELECT') {
+        const nameAttr = el.getAttribute('name') || '';
+        if (nameAttr.startsWith('FEEDBACK ASO') && typeof window.applyColor === 'function') {
+          window.applyColor(el);
+        } else if (nameAttr.startsWith('CURRENT_UIC') && typeof window.updateUicColor === 'function') {
+          window.updateUicColor(el);
+        }
+      }
+    });
+
+    // Highlight visual: flash hijau seluruh baris (feedback sukses)
+    if (touched.length > 0) {
+      const tr = touched[0].closest('tr');
+      if (tr) {
+        tr.classList.add('row-just-saved');
+        // Pastikan tidak menandai row sebagai dirty (Quick Edit sudah save via AJAX)
+        tr.classList.remove('is-dirty');
+        setTimeout(() => tr.classList.remove('row-just-saved'), 2000);
+      }
+    }
+
+    // Kalau tidak ada baris dirty lagi, sembunyikan floating save bar
+    if (!document.querySelector('.editable-table tr.is-dirty')) {
+      const bar = document.querySelector('.controls-bar');
+      if (bar) bar.style.display = 'none';
+    }
+  }
+
+  // Inject CSS untuk flash animation (sekali saja saat pertama load)
+  if (!document.getElementById('row-saved-style')) {
+    const style = document.createElement('style');
+    style.id = 'row-saved-style';
+    style.textContent = `
+      .editable-table tr.row-just-saved td {
+        animation: flashSavedRow 1.6s ease-out;
+      }
+      @keyframes flashSavedRow {
+        0%   { background-color: #dcfce7 !important; }
+        60%  { background-color: #dcfce7 !important; }
+        100% { background-color: transparent; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function fillForm(row) {
     const g = k => (row[k] != null ? String(row[k]) : '');
     document.getElementById('qe-ctx-order-id').textContent = g('ORDER_ID') || '—';
@@ -359,9 +430,15 @@
         } else {
           window.toast(`Berhasil menyimpan ${res.updated} kolom untuk Order ${currentRowKey}`, 'success');
         }
+
+        // ═══ OPTIMISTIC UI UPDATE ═══
+        // Langsung update sel di tabel tanpa reload halaman
+        try {
+          updateRowInTable(currentRowNum, updates);
+        } catch (e) { console.warn('Row update failed:', e); }
+
         modalEl.classList.remove('show');
         currentRowNum = null; currentRowKey = null;
-        if (typeof window.refreshKendalaTable === 'function') window.refreshKendalaTable();
       } else {
         window.toast('Gagal: ' + (res.error || 'Unknown error'), 'error');
         btn.disabled = false;
