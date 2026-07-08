@@ -1454,11 +1454,39 @@ def api_unlock():
         release_lock(sheet_name, row_key)
     return jsonify({'ok': True})
 
+
+@flask_app.route('/api/kendala_locks')
+@api_login_required
+def api_kendala_locks():
+    """Return dict of active locks {row_key: {locked_by, nama, is_mine}}.
+    Dipakai untuk polling real-time indikator lock di halaman Kendala Master.
+    Response ringan (cuma query MySQL, tidak sentuh Google Sheets)."""
+    cleanup_expired_locks()
+    try:
+        sheet = SHEET_NAMES['kendala']['kendalamaster']
+        current_user = session['user']['username']
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                "SELECT row_key, locked_by, locked_by_nama FROM edit_locks WHERE sheet_name=%s",
+                (sheet,)
+            )
+            rows = cur.fetchall()
+        locks = {}
+        for r in rows:
+            locks[str(r['row_key'])] = {
+                'nama': r['locked_by_nama'] or r['locked_by'],
+                'is_mine': r['locked_by'] == current_user,
+            }
+        return jsonify({'locks': locks})
+    except Exception as e:
+        return jsonify({'locks': {}, 'error': str(e)}), 500
+
+
 @flask_app.route('/update_kendala', methods=['POST'])
 @login_required
 @role_required('admin', 'operator')
 def update_kendala():
-    """Legacy bulk update (form-encoded col[row]=value)."""
+    """Legacy bulk update (form-encoded col[row]=value) — dengan cek row lock."""
     try:
         updates_by_row = {}
         pattern = re.compile(r'(.+?)\[(\d+)\]')
@@ -1469,24 +1497,70 @@ def update_kendala():
                 rn = int(m.group(2))
                 updates_by_row.setdefault(rn, {})[col] = value
 
-        ws = get_worksheet(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        sheet = SHEET_NAMES['kendala']['kendalamaster']
+        ws = get_worksheet(SPREADSHEET_IDS['kendala'], sheet)
         headers = ws.row_values(2)
         header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
 
+        # ═══ CEK ROW LOCK ═══
+        # Ambil ORDER_ID untuk setiap row yang mau di-update, lalu cek lock
+        order_id_col = header_map.get('ORDER_ID')
+        skipped_locked = []  # list of (row_num, order_id, locked_by_nama)
+        allowed_rows = set(updates_by_row.keys())
+
+        if order_id_col:
+            # Read the whole ORDER_ID column once (satu API call)
+            order_id_column = ws.col_values(order_id_col)  # index 0 = row 1
+            current_user = session['user']['username']
+
+            # Ambil semua lock aktif untuk sheet ini
+            cleanup_expired_locks()
+            try:
+                with db_cursor() as (conn, cur):
+                    cur.execute(
+                        "SELECT row_key, locked_by, locked_by_nama FROM edit_locks WHERE sheet_name=%s",
+                        (sheet,)
+                    )
+                    active_locks = {r['row_key']: r for r in cur.fetchall()}
+            except Exception:
+                active_locks = {}
+
+            # Filter baris yang locked oleh user lain
+            for rn in list(updates_by_row.keys()):
+                # row_num N mapped to ORDER_ID at index N-1
+                if 0 < rn <= len(order_id_column):
+                    order_id = str(order_id_column[rn - 1]).strip()
+                    lock = active_locks.get(order_id)
+                    if lock and lock['locked_by'] != current_user:
+                        skipped_locked.append((rn, order_id, lock.get('locked_by_nama') or lock['locked_by']))
+                        allowed_rows.discard(rn)
+
+        # Build cells hanya untuk baris yang diizinkan
         cells = []
-        for rn, changes in updates_by_row.items():
-            for col, val in changes.items():
+        for rn in allowed_rows:
+            for col, val in updates_by_row[rn].items():
                 col_clean = col.strip()
                 if col_clean in header_map:
                     cells.append(gspread.Cell(row=rn, col=header_map[col_clean], value=val))
+
         if cells:
             ws.update_cells(cells, value_input_option='USER_ENTERED')
-            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
-            audit('update_bulk', sheet_name=SHEET_NAMES['kendala']['kendalamaster'],
-                  new_value=f"{len(updates_by_row)} rows")
-            flash(f"Berhasil memperbarui {len(updates_by_row)} baris data.", "success")
-        else:
+            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], sheet)
+            audit('update_bulk', sheet_name=sheet,
+                  new_value=f"{len(allowed_rows)} rows")
+            flash(f"Berhasil memperbarui {len(allowed_rows)} baris data.", "success")
+
+        # Peringatan untuk baris yang di-skip karena locked
+        if skipped_locked:
+            lockers = ', '.join(sorted(set(nama for _, _, nama in skipped_locked)))
+            flash(
+                f"{len(skipped_locked)} baris TIDAK tersimpan karena sedang diedit oleh: {lockers}. "
+                f"Silakan refresh halaman untuk melihat versi terbaru.",
+                "warning"
+            )
+        elif not cells:
             flash("Tidak ada perubahan yang disimpan.", "info")
+
     except Exception as e:
         flash(f"Gagal mengupdate data: {e}", "error")
         traceback.print_exc()

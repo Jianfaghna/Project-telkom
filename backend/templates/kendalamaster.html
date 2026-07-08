@@ -246,6 +246,48 @@
     .col-hidden { display: none !important; }
 
     /* =====================================================
+       ROW LOCKED BY OTHER USER — disable inline edit
+       Warna ORANGE (bukan kuning) supaya jelas beda dari
+       "is-dirty" (kuning = unsaved edit user sendiri)
+       ===================================================== */
+    .editable-table tr.row-locked-by-other td {
+        background: #ffe4d1 !important;   /* orange muda */
+        position: relative;
+        transition: background 0.3s ease;
+    }
+    .editable-table tr.row-locked-by-other input,
+    .editable-table tr.row-locked-by-other select,
+    .editable-table tr.row-locked-by-other textarea {
+        pointer-events: none;
+        background: #ffd9c0 !important;
+        color: #78716c !important;
+        cursor: not-allowed !important;
+        opacity: 0.75;
+        border-color: #fdba74 !important;
+    }
+    /* Badge lock kecil di sisi kanan kolom No */
+    .editable-table tr.row-locked-by-other td:first-child::after {
+        content: '\f023';  /* fa-lock */
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        color: #c2410c;
+        position: absolute;
+        right: 4px; top: 50%;
+        transform: translateY(-50%);
+        font-size: 11px;
+    }
+    [data-theme="dark"] .editable-table tr.row-locked-by-other td {
+        background: #3a2513 !important;
+    }
+    [data-theme="dark"] .editable-table tr.row-locked-by-other input,
+    [data-theme="dark"] .editable-table tr.row-locked-by-other select,
+    [data-theme="dark"] .editable-table tr.row-locked-by-other textarea {
+        background: #2b1e13 !important;
+        color: #a8a29e !important;
+        border-color: #7c2d12 !important;
+    }
+
+    /* =====================================================
        TRUNCATE — kolom panjang seperti DEVICE_ID
        ===================================================== */
     .col-truncate {
@@ -855,9 +897,11 @@
                             {% set order_id_idx = header.index('ORDER_ID') if 'ORDER_ID' in header else -1 %}
                             {% set order_id = row[order_id_idx] if order_id_idx >= 0 and order_id_idx < row|length else '' %}
                             {% set lock = active_locks.get(order_id|string) if active_locks is defined else none %}
-                            <tr class="{% if is_new %}is-new-row{% endif %}"
+                            {% set is_locked_by_other = lock and lock.locked_by != (user.username if user else '') %}
+                            <tr class="{% if is_new %}is-new-row{% endif %}{% if is_locked_by_other %} row-locked-by-other{% endif %}"
                                 data-order-id="{{ order_id }}"
-                                data-row-num="{{ row_number }}">
+                                data-row-num="{{ row_number }}"
+                                {% if is_locked_by_other %}data-locked-by="{{ lock.nama or lock.locked_by }}"{% endif %}>
                                 <td style="text-align:center; font-weight:bold;" class="col-edit-sticky" style="left:0;">
                                     {{ loop.index + pagination.start_index }}
                                     {% if is_new %}<br><span class="badge-new" title="Data baru">NEW</span>{% endif %}
@@ -1074,6 +1118,99 @@
             el.style.cursor = 'not-allowed';
         });
 })();
+{% endif %}
+
+// =====================================================
+// ROW LOCKED BY OTHER USER — defensive readonly + tooltip (initial state)
+// =====================================================
+function applyLockedStateToRow(tr, lockedByName) {
+    tr.classList.add('row-locked-by-other');
+    tr.dataset.lockedBy = lockedByName;
+    const tooltip = `Baris ini sedang diedit oleh ${lockedByName}. Perubahan Anda tidak akan tersimpan.`;
+    tr.title = tooltip;
+    tr.querySelectorAll('input, select, textarea').forEach(el => {
+        el.setAttribute('readonly', 'readonly');
+        el.setAttribute('disabled', 'disabled');
+        el.title = tooltip;
+    });
+    // Update pencil button ke kondisi locked
+    const editBtn = tr.querySelector('.btn-row-edit');
+    if (editBtn) {
+        editBtn.classList.add('locked');
+        editBtn.disabled = true;
+        editBtn.title = `Diedit oleh ${lockedByName}`;
+        editBtn.innerHTML = '<i class="fa-solid fa-lock"></i><span class="lock-dot">!</span>';
+        editBtn.removeAttribute('onclick');
+    }
+}
+
+function removeLockedStateFromRow(tr) {
+    tr.classList.remove('row-locked-by-other');
+    delete tr.dataset.lockedBy;
+    tr.removeAttribute('title');
+    // Jangan re-enable input kalau user viewer (tetap disabled)
+    {% if user_role != 'viewer' %}
+    tr.querySelectorAll('input, select, textarea').forEach(el => {
+        el.removeAttribute('readonly');
+        el.removeAttribute('disabled');
+        el.removeAttribute('title');
+    });
+    // Restore pencil edit button
+    const editBtn = tr.querySelector('.btn-row-edit');
+    if (editBtn && editBtn.classList.contains('locked')) {
+        const rowNum = tr.dataset.rowNum;
+        const orderId = tr.dataset.orderId;
+        editBtn.classList.remove('locked');
+        editBtn.disabled = false;
+        editBtn.title = 'Edit baris ini';
+        editBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i>';
+        editBtn.setAttribute('onclick', `window.openQuickEdit(${rowNum}, '${orderId}')`);
+    }
+    {% endif %}
+}
+
+// Initial state pada page load (dari server-side render)
+document.querySelectorAll('.editable-table tr.row-locked-by-other').forEach(tr => {
+    // Reapply supaya konsisten (readonly, tooltip, dll)
+    applyLockedStateToRow(tr, tr.dataset.lockedBy || 'pengguna lain');
+});
+
+// =====================================================
+// POLLING LOCK STATUS — real-time indicator (setiap 10 detik)
+// Hanya query MySQL edit_locks, tidak fetch data lengkap → beban ringan
+// =====================================================
+{% if user_role in ['admin', 'operator'] %}
+async function pollKendalaLocks() {
+    try {
+        const res = await fetch('/api/kendala_locks').then(r => r.json());
+        const locks = res.locks || {};
+
+        document.querySelectorAll('.editable-table tr[data-order-id]').forEach(tr => {
+            const orderId = tr.dataset.orderId;
+            if (!orderId) return;
+            const lockInfo = locks[orderId];
+            const isLockedByOther = lockInfo && !lockInfo.is_mine;
+            const wasLockedByOther = tr.classList.contains('row-locked-by-other');
+
+            if (isLockedByOther && !wasLockedByOther) {
+                // Baru saja di-lock oleh user lain
+                applyLockedStateToRow(tr, lockInfo.nama);
+            } else if (!isLockedByOther && wasLockedByOther) {
+                // Sudah tidak di-lock lagi (user lain close modal)
+                removeLockedStateFromRow(tr);
+            } else if (isLockedByOther && wasLockedByOther) {
+                // Masih di-lock — update nama jika berbeda
+                if (tr.dataset.lockedBy !== lockInfo.nama) {
+                    tr.dataset.lockedBy = lockInfo.nama;
+                }
+            }
+        });
+    } catch (e) { /* silent — jangan spam console */ }
+}
+// Polling setiap 10 detik
+setInterval(pollKendalaLocks, 10000);
+// Trigger pertama setelah 2 detik supaya cepat sync
+setTimeout(pollKendalaLocks, 2000);
 {% endif %}
 
 // =====================================================
