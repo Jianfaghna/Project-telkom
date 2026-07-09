@@ -220,11 +220,12 @@
 
         <div class="upload-info-box">
             <strong><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Apa itu Filter BIMA?</strong><br>
-            Digunakan untuk memproses file Excel hasil ekspor dari sistem <strong>BIMA</strong> (Billing Management).
-            Data akan difilter, lalu kolom yang tidak diperlukan dihapus, dan hasilnya dikirim ke sheet
-            <strong>BIMA</strong> di Google Spreadsheet.<br>
+            Digunakan untuk memproses file Excel hasil ekspor dari sistem <strong>BIMA</strong>
+            (<em>Bina Mitra</em>) &mdash; sistem internal Telkom untuk manajemen teknisi, armada, dan
+            koordinasi pekerjaan lapangan. Data akan difilter, lalu kolom yang tidak diperlukan dihapus,
+            dan hasilnya dikirim ke sheet <strong>BIMA</strong> di Google Spreadsheet.<br>
             <ul>
-                <li>Sumber file: ekspor dari aplikasi BIMA (<code>.xlsx</code> / <code>.xls</code>)</li>
+                <li>Sumber file: ekspor dari aplikasi <strong>BIMA</strong> (<code>.xlsx</code> / <code>.xls</code>)</li>
                 <li>Kolom wajib ada: <strong>SC Order No / Track ID / CSRM No</strong>, <strong>CRM Order Type</strong>, <strong>Status</strong></li>
                 <li>Proses: filter status aktif → hapus kolom tidak perlu → upload ke sheet</li>
             </ul>
@@ -271,13 +272,15 @@
 
         <div class="upload-info-box green">
             <strong><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Apa itu Filter KPRO?</strong><br>
-            Digunakan untuk memproses file Excel hasil ekspor dari sistem <strong>KPRO</strong> (pengerjaan teknisi).
-            Data akan dicocokkan dengan data kendala aktif, lalu dikirim ke sheet
+            Digunakan untuk memproses file Excel hasil ekspor dari sistem <strong>KPRO</strong>
+            (<em>Kawal Provisioning</em>) &mdash; platform Telkom untuk memantau proses <em>provisioning</em>
+            (pemasangan baru/aktivasi layanan) serta melacak status pesanan pelanggan. Kolom-kolom
+            yang tidak diperlukan akan dihapus secara otomatis, lalu data dikirim ke sheet
             <strong>KPRO</strong> di Google Spreadsheet.<br>
             <ul>
-                <li>Sumber file: ekspor dari aplikasi KPRO Telkom (<code>.xlsx</code> / <code>.xls</code>)</li>
-                <li>Kolom wajib ada: <strong>Order ID / WO Number</strong>, <strong>Status Pengerjaan</strong></li>
-                <li>Proses: filter data relevan → sinkron status teknisi → upload ke sheet</li>
+                <li>Sumber file: ekspor dari aplikasi <strong>KPRO</strong> Telkom (<code>.xlsx</code> / <code>.xls</code> / <code>.csv</code>)</li>
+                <li>Kolom yang otomatis dihapus jika ada: <code>CRMORDERTYPE</code>, <code>REGIONAL LAMA</code>, <code>DISTRICT LAMA</code>, <code>DATEL LAMA</code></li>
+                <li>Proses: baca file → hapus kolom tidak perlu → upload ke sheet KPRO</li>
             </ul>
         </div>
 
