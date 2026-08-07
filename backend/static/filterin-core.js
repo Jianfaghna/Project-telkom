@@ -437,6 +437,11 @@
           updateRowInTable(currentRowNum, updates);
         } catch (e) { console.warn('Row update failed:', e); }
 
+        // Trigger refresh kartu dashboard kalau halaman punya updateStats()
+        if (typeof window.updateStats === 'function') {
+          try { window.updateStats(); } catch (e) { /* silent */ }
+        }
+
         modalEl.classList.remove('show');
         currentRowNum = null; currentRowKey = null;
       } else {

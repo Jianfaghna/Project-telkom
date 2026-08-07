@@ -2664,6 +2664,18 @@ def kpi_upload(kpi_type):
         return redirect(url_for('kpi_detail', kpi_type=kpi_type))
 
     try:
+        # ── Pre-check: deteksi file HTML/XML yang di-rename .xls
+        # (umum dari export sistem web eksternal seperti BIMA/portal Telkom)
+        head = f.read(512).lstrip().lower()
+        f.seek(0)  # reset stream biar read_excel bisa baca ulang
+        if head.startswith((b'<html', b'<!doctype', b'<style', b'<table', b'<?xml')):
+            flash(
+                '❌ File terdeteksi bukan .xls. Silakan buka di Excel lalu '
+                'Save As → "Excel Workbook (*.xlsx)".',
+                'error'
+            )
+            return redirect(url_for('kpi_detail', kpi_type=kpi_type))
+
         # Baca Excel — kolom A2 sampai AG (index 0-32)
         engine = 'xlrd' if ext == 'xls' else 'openpyxl'
         df = pd.read_excel(f, engine=engine, header=0)
@@ -2720,7 +2732,15 @@ def kpi_upload(kpi_type):
         )
 
     except Exception as e:
-        flash(f'❌ Gagal upload: {e}', 'error')
+        msg = str(e).lower()
+        if 'expected bof' in msg or 'unsupported format' in msg or 'corrupt' in msg:
+            flash(
+                '❌ File terdeteksi bukan .xls. Silakan buka di Excel lalu '
+                'Save As → "Excel Workbook (*.xlsx)".',
+                'error'
+            )
+        else:
+            flash(f'❌ Gagal upload: {e}', 'error')
 
     return redirect(url_for('kpi_detail', kpi_type=kpi_type))
 

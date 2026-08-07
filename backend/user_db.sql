@@ -70,12 +70,13 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
 -- Row-level soft lock saat user sedang mengedit baris
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `edit_locks` (
-  `id`          int(11)      NOT NULL AUTO_INCREMENT,
-  `sheet_name`  varchar(100) NOT NULL,
-  `row_key`     varchar(100) NOT NULL,
-  `locked_by`   varchar(50)  NOT NULL,
-  `locked_at`   timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `expires_at`  timestamp    NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
+  `id`             int(11)      NOT NULL AUTO_INCREMENT,
+  `sheet_name`     varchar(100) NOT NULL,
+  `row_key`        varchar(100) NOT NULL,
+  `locked_by`      varchar(50)  NOT NULL,
+  `locked_by_nama` varchar(100) NOT NULL DEFAULT '',
+  `locked_at`      timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at`     timestamp    NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_lock` (`sheet_name`, `row_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -129,9 +130,3 @@ COMMIT;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 
--- ============================================================
--- CATATAN SETELAH IMPORT:
--- 1. Jalankan hash_password.py untuk hash semua password plain text
--- 2. Akun admin default: TelkomASO / TelkomASO001
--- 3. Semua akun lain role-nya 'operator' by default
--- ============================================================
