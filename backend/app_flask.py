@@ -2897,6 +2897,10 @@ KPI_TYPES = {
 class KPIValidationError(ValueError):
     """File atau header acuan tidak memenuhi struktur unggahan KPI."""
 
+    def __init__(self, message, user_message=None):
+        super().__init__(message)
+        self.user_message = user_message
+
 
 class _KPIHTMLTableParser(HTMLParser):
     """Baca tabel ekspor sebagai teks saja, tanpa browser atau akses resource luar."""
@@ -2960,7 +2964,7 @@ class _KPIHTMLTableParser(HTMLParser):
         raise KPIValidationError('Format XML tidak didukung. Simpan ulang sebagai .xlsx.')
 
 
-def _read_excel_upload(file, extension):
+def _read_excel_upload(file, extension, validate_headers=None):
     head = file.read(512).decode('utf-8-sig', errors='replace').lstrip().lower()
     file.seek(0)
     if head.startswith('<'):
@@ -2986,6 +2990,14 @@ def _read_excel_upload(file, extension):
         # Jangan inferensi angka/tanggal: ID berawalan nol dan teks NA harus utuh.
         return pd.DataFrame(parser.rows, dtype=object)
     engine = 'xlrd' if extension == 'xls' else 'openpyxl'
+    if validate_headers is not None:
+        # Tolak struktur yang salah sebelum pandas membaca seluruh baris workbook.
+        # HTML .xls tetap melewati parser lengkap di atas agar pemeriksaan
+        # struktur/elemen berbahaya di akhir dokumen tidak dilewati.
+        preview = pd.read_excel(file, engine=engine, header=None, dtype=object,
+                                keep_default_na=False, nrows=1)
+        validate_headers(preview)
+        file.seek(0)
     return pd.read_excel(file, engine=engine, header=None, dtype=object, keep_default_na=False)
 
 
@@ -3051,7 +3063,11 @@ def _align_kpi_upload(data, expected_headers, label):
             details.append('Kolom wajib belum ada: ' + ', '.join(missing))
         if extra:
             details.append('Kolom tidak dikenal: ' + ', '.join(extra))
-        raise KPIValidationError(f'Format kolom tidak sesuai untuk {label}. ' + '. '.join(details))
+        short_label = label.split(' (', 1)[0]
+        raise KPIValidationError(
+            f'Format kolom tidak sesuai untuk {label}. ' + '. '.join(details),
+            user_message=(f'File tidak sesuai untuk KPI {short_label}. '
+                          f'Pastikan Anda memilih file {short_label} dengan header yang benar.'))
     aligned = data[[actual_by_key[_kpi_header_key(name)] for name in expected]].copy()
     aligned.columns = expected
     return aligned
@@ -3157,13 +3173,24 @@ def kpi_upload(kpi_type):
         return redirect(url_for('kpi_detail', kpi_type=kpi_type))
 
     try:
-        # Header dibaca sebagai data agar nama kosong/duplikat tidak disamarkan pandas.
-        raw = _read_excel_upload(f, ext)
-        df = _prepare_kpi_upload(raw)
+        ws, expected_headers = None, None
 
-        # Baca header langsung dari sumber, bukan cache atau file yang akan diupload.
-        ws = get_worksheet(SPREADSHEET_IDS['kpi'], sheet_name)
-        expected_headers = _kpi_import_headers(ws.row_values(1), info)
+        def validate_headers_first(preview):
+            nonlocal ws, expected_headers
+            if preview.empty:
+                raise KPIValidationError('File Excel kosong atau tidak memiliki header.')
+            headers = _validate_kpi_headers(preview.iloc[0].tolist(), 'Header file Excel')
+            # Tetap gunakan header sumber terbaru, bukan cache atau header upload.
+            ws = get_worksheet(SPREADSHEET_IDS['kpi'], sheet_name)
+            expected_headers = _kpi_import_headers(ws.row_values(1), info)
+            _align_kpi_upload(pd.DataFrame(columns=headers), expected_headers, info['label'])
+
+        raw = _read_excel_upload(f, ext, validate_headers=validate_headers_first)
+        # Validasi lengkap tetap diperlukan: kolom ekstra dapat muncul hanya
+        # pada baris data, dan file bisa hanya berisi header/baris kosong.
+        df = _prepare_kpi_upload(raw)
+        if ws is None:  # Ekspor HTML .xls sudah diperiksa lengkap oleh parser.
+            validate_headers_first(raw)
         df = _align_kpi_upload(df, expected_headers, info['label'])
 
         total_excel = len(df)
@@ -3204,7 +3231,12 @@ def kpi_upload(kpi_type):
         )
 
     except KPIValidationError as e:
-        flash(f'{e} Upload ditolak; data lama tidak diubah.', 'error')
+        if e.user_message:
+            # Rincian kolom untuk diagnosis, bukan notifikasi panjang kepada pengguna.
+            flask_app.logger.warning('Upload KPI %s ditolak: %s', kpi_type, e)
+            flash(f'{e.user_message} Data lama tidak diubah.', 'error')
+        else:
+            flash(f'{e} Upload ditolak; data lama tidak diubah.', 'error')
     except Exception as e:
         msg = str(e).lower()
         if 'expected bof' in msg or 'unsupported format' in msg or 'corrupt' in msg:
