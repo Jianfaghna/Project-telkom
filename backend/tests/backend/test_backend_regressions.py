@@ -441,6 +441,20 @@ def test_watchlist_template_uses_explicit_role_allowlist(role, can_write, is_adm
     assert re.search(r'const IS_ADMIN\s*=\s*' + str(is_admin).lower() + ';', rendered)
 
 
+@pytest.mark.parametrize('role', ['admin', 'operator', 'viewer'])
+def test_sidebar_hides_only_kpro_table_link(role):
+    with app.flask_app.test_request_context('/tabel?kelas=05'):
+        app.session['user'] = dict(USER, role=role)
+        html = app.render_template('base.html')
+        assert 'data-testid="nav-kpro"' not in html
+        assert 'data-testid="nav-bima-master"' in html
+        assert 'data-testid="nav-bima"' in html
+        assert 'data-testid="nav-kpro-web"' in html
+        assert app.url_for('tabel', kelas='05') == '/tabel?kelas=05'
+        if role in ('admin', 'operator'):
+            assert 'data-testid="nav-upload"' in html
+
+
 def test_deleted_account_loses_access(client, isolate):
     isolate.fetchone.return_value = None
     assert client.get('/kendala_data').status_code == 401

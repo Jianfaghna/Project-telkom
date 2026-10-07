@@ -146,7 +146,9 @@
                     </div>
                     <ul class="submenu">
                         <li><a href="{{ url_for('tabel', kelas='04') }}" data-testid="nav-bima-master" class="{% if in_tabel and request.args.get('kelas')=='04' %}active-sub{% endif %}">BIMA MASTER</a></li>
+                        {# Menu Tabel KPRO disembunyikan sementara untuk semua role; route dan upload tetap tersedia.
                         <li><a href="{{ url_for('tabel', kelas='05') }}" data-testid="nav-kpro" class="{% if in_tabel and request.args.get('kelas')=='05' %}active-sub{% endif %}">KPRO</a></li>
+                        #}
                         <li><a href="{{ url_for('tabel', kelas='06') }}" data-testid="nav-bima" class="{% if in_tabel and request.args.get('kelas')=='06' %}active-sub{% endif %}">BIMA</a></li>
                     </ul>
                 </li>
