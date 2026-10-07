@@ -893,7 +893,7 @@ def test_kpi_schema_rejection_preserves_old_data(client, worksheet, kind, case):
     response = client.post(f'/kpi/{kind}/upload', data={'file': (excel_content(rows), 'report.xlsx')})
     assert response.status_code == 302
     with client.session_transaction() as s:
-        assert any(category == 'error' and 'data lama tidak diubah' in message
+        assert any(category == 'error' and 'data lama tidak diubah' in message.lower()
                    for category, message in s.get('_flashes', []))
     worksheet.update.assert_not_called()
     worksheet.clear.assert_not_called()
@@ -917,6 +917,61 @@ def test_kpi_accepts_matching_header_and_reorders_without_losing_ids(client, wor
     assert worksheet.update.call_args.kwargs['range_name'] == ('A2:B3' if kind == 'tti' else 'B2:C3')
     worksheet.clear.assert_not_called()
     app.audit.assert_called_once()
+
+
+@pytest.mark.parametrize('kind', ['tti', 'ffg', 'ttr'])
+@pytest.mark.parametrize('extension', ['xlsx', 'xls'])
+def test_kpi_wrong_header_stops_before_full_excel_read(client, worksheet, monkeypatch, kind, extension):
+    worksheet.get_all_values.return_value = kpi_sheet_rows(kind, [KPI_TEST_HEADERS[kind], ['OLD', 'OLD']])
+
+    def header_only(*args, **kwargs):
+        assert kwargs.get('nrows') == 1, 'File salah tidak boleh dibaca seluruhnya'
+        return pd.DataFrame([['Date Created', 'Workorder']])
+
+    reader = MagicMock(side_effect=header_only)
+    monkeypatch.setattr(app.pd, 'read_excel', reader)
+    response = client.post(f'/kpi/{kind}/upload', data={
+        'file': (io.BytesIO(b'Excel placeholder'), f'export.{extension}')})
+    assert response.status_code == 302
+    reader.assert_called_once()
+    worksheet.row_values.assert_called_once_with(1)
+    with client.session_transaction() as session:
+        assert any('File tidak sesuai untuk KPI' in msg for _, msg in session.get('_flashes', []))
+    worksheet.update.assert_not_called()
+    worksheet.clear.assert_not_called()
+    app.audit.assert_not_called()
+    app.invalidate_sheet_cache.assert_not_called()
+
+
+@pytest.mark.parametrize('kind', ['tti', 'ffg', 'ttr'])
+@pytest.mark.parametrize('case', ['valid', 'blank_first_row', 'extra_column_in_later_row', 'header_only'])
+def test_kpi_header_preflight_keeps_full_validation(client, worksheet, monkeypatch, kind, case):
+    headers = KPI_TEST_HEADERS[kind]
+    worksheet.get_all_values.return_value = kpi_sheet_rows(kind, [headers, ['OLD', 'OLD']])
+    rows = [headers[:], ['00123', 'COMPLY']]
+    if case == 'blank_first_row':
+        rows.insert(1, ['', ''])
+    elif case == 'extra_column_in_later_row':
+        rows.append(['00456', 'COMPLY', 'UNEXPECTED'])
+    elif case == 'header_only':
+        rows = rows[:1]
+    content = excel_content(rows)
+    reader = MagicMock(wraps=app.pd.read_excel)
+    monkeypatch.setattr(app.pd, 'read_excel', reader)
+    response = client.post(f'/kpi/{kind}/upload', data={'file': (content, 'report.xlsx')})
+    assert response.status_code == 302
+    assert [call.kwargs.get('nrows') for call in reader.call_args_list] == [1, None]
+    worksheet.row_values.assert_called_once_with(1)
+    if case in ('valid', 'blank_first_row'):
+        assert worksheet.update.call_args.kwargs['values'] == [['00123', 'COMPLY']]
+        app.audit.assert_called_once()
+    else:
+        with client.session_transaction() as session:
+            assert any(category == 'error' for category, _ in session.get('_flashes', []))
+        worksheet.update.assert_not_called()
+        app.audit.assert_not_called()
+        app.invalidate_sheet_cache.assert_not_called()
+    worksheet.clear.assert_not_called()
 
 
 @pytest.mark.parametrize('reference', [[], ['ORDER_ID', ''], ['ORDER_ID', 'order_id'], ['ORDER_ID'] * 34])
@@ -1014,15 +1069,51 @@ def test_kpi_missing_xcek_layout_is_rejected_before_write(client, worksheet, kin
 
 
 @pytest.mark.parametrize('kind', ['ffg', 'ttr'])
-def test_kpi_file_must_not_include_sheet_helper_column(client, worksheet, kind):
+def test_kpi_file_must_not_include_sheet_helper_column(client, worksheet, kind, caplog):
     headers = KPI_TEST_HEADERS[kind]
     worksheet.get_all_values.return_value = kpi_sheet_rows(kind, [headers, ['OLD', 'OLD']])
     client.post(f'/kpi/{kind}/upload', data={
         'file': (excel_content([['XCEK'] + headers, ['', 'NEW', 'COMPLY']]), 'report.xlsx')})
     with client.session_transaction() as session:
-        assert any('Kolom tidak dikenal: XCEK' in message for _, message in session.get('_flashes', []))
+        assert any('File tidak sesuai untuk KPI' in message for _, message in session.get('_flashes', []))
+        assert all('Kolom tidak dikenal' not in message for _, message in session.get('_flashes', []))
+    assert 'Kolom tidak dikenal: XCEK' in caplog.text
     worksheet.update.assert_not_called()
     app.audit.assert_not_called()
+
+
+@pytest.mark.parametrize('kind,label', [('tti', 'TTI'), ('ffg', 'FFG'), ('ttr', 'TTR FFG')])
+def test_kpi_header_error_is_short_and_details_only_in_log(client, worksheet, caplog, kind, label):
+    headers = [f'expected_{i}' for i in range(33)]
+    worksheet.get_all_values.return_value = kpi_sheet_rows(kind, [headers, ['OLD'] * 33])
+    response = client.post(f'/kpi/{kind}/upload', data={'file': (
+        excel_content([['Date Created', 'Workorder'], ['2026-01-01', 'TEST']]), 'export.xlsx')})
+    assert response.status_code == 302
+    with client.session_transaction() as session:
+        messages = session.get('_flashes', [])
+        assert messages == [('error', f'File tidak sesuai untuk KPI {label}. '
+                             f'Pastikan Anda memilih file {label} dengan header yang benar. '
+                             'Data lama tidak diubah.')]
+        assert len(messages[0][1]) < 170
+    assert 'Kolom wajib belum ada: expected_0' in caplog.text
+    assert 'Kolom tidak dikenal: Date Created, Workorder' in caplog.text
+    worksheet.update.assert_not_called()
+    worksheet.clear.assert_not_called()
+    app.audit.assert_not_called()
+    app.invalidate_sheet_cache.assert_not_called()
+
+
+@pytest.mark.parametrize('kind', ['tti', 'ffg', 'ttr'])
+def test_kpi_upload_hint_is_short_and_xcek_is_only_for_ffg_ttr(client, monkeypatch, kind):
+    monkeypatch.setattr(app, 'get_sheet_values', lambda *_: [])
+    monkeypatch.setattr(app, '_get_kpi_last_upload', lambda *_: None)
+    html = client.get(f'/kpi/{kind}').get_data(as_text=True)
+    hint = re.search(r'<div class="kpi-replace-warn">(.*?)</div>', html, re.S).group(1)
+    text = ' '.join(re.sub(r'<[^>]+>', '', hint).split())
+    assert 'Gunakan file Excel (.xlsx / .xls)' in text
+    assert 'mengganti data impor lama' in text
+    assert ('Jangan sertakan kolom XCEK' in text) == (kind != 'tti')
+    assert len(text) < 220
 
 
 @pytest.mark.parametrize('kind', ['tti', 'ffg', 'ttr'])

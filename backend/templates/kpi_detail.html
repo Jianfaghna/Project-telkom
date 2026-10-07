@@ -355,15 +355,9 @@
 
             <div class="kpi-replace-warn">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <span>Data impor lama di sheet <strong>"{{ SHEET_NAMES_KPI[kpi_type] }}"</strong>
-                akan <strong>diganti</strong> mulai {{ 'A2' if info.import_start_col == 1 else 'B2' }} setelah file lolos validasi,
-                termasuk mengosongkan sisa baris lama. Header dan kolom di luar area impor tetap dipertahankan.
-                {% if info.import_start_col == 2 %}Kolom XCEK beserta rumusnya tidak diubah dan tidak perlu dimasukkan ke file Excel.{% endif %}
-                Nama kolom pada baris pertama file harus sesuai dengan header area impor, tanpa kolom kosong,
-                duplikat, kurang, atau tambahan (maksimal 33 kolom/A–AG).
-                Urutan kolom boleh berbeda; sistem akan menyesuaikannya. File harus berisi baris data.
-                Ekspor tabel HTML berakhiran .xls dari website KPI juga didukung, tanpa perlu konversi,
-                selama berisi satu tabel lengkap dengan struktur kolom yang sesuai.</span>
+                <span>Gunakan file Excel (.xlsx / .xls) sesuai jenis KPI yang dipilih.
+                Upload yang berhasil akan <strong>mengganti data impor lama</strong>.
+                {% if info.import_start_col == 2 %}Jangan sertakan kolom XCEK dalam file.{% endif %}</span>
             </div>
 
             <div class="kpi-upload-error" id="kpi-error">

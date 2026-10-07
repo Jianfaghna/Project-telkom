@@ -204,6 +204,7 @@
 .btn-export-pdf:hover { background: #b91c1c; }
 
 /* Dark mode */
+@media screen {
 [data-theme="dark"] .recap-section { background: var(--surface); border-color: var(--border); }
 [data-theme="dark"] .recap-table td { background: var(--surface); color: var(--text); border-color: var(--border); }
 [data-theme="dark"] .recap-table tbody tr:nth-child(even) td { background: var(--surface-2) !important; }
@@ -213,11 +214,25 @@
 [data-theme="dark"] .wilayah-card { background: var(--surface-2); border-color: var(--border); }
 [data-theme="dark"] .wilayah-card-body { background: var(--surface-2); }
 [data-theme="dark"] .wilayah-item { border-color: var(--border); color: var(--text); }
+}
 
 /* =============================================
    PRINT / PDF styles
    ============================================= */
 @media print {
+    /* Tema cetak selalu terang; tidak mengubah data-theme atau preferensi browser. */
+    html {
+        color-scheme: light !important;
+        --bg: #fff !important;
+        --surface: #ffffff !important;
+        --surface-2: #fafbfc !important;
+        --text: #1e293b !important;
+        --text-muted: #64748b !important;
+        --border: #e2e8f0 !important;
+        --border-strong: #cbd5e1 !important;
+    }
+    body { transition: none !important; }
+
     /* ── Ukuran & orientasi kertas ── */
     @page {
         size: A4 landscape;
