@@ -2,8 +2,23 @@
 <html lang="id" data-theme="light">
 <head>
     <meta charset="UTF-8">
+    {# Terapkan preferensi sebelum CSS/konten dimuat agar navigasi tidak berkedip terang. #}
+    <script id="filterin-theme-init">
+    (function () {
+        var theme = 'light';
+        try {
+            if (localStorage.getItem('filterin-theme') === 'dark') theme = 'dark';
+        } catch (_) { /* Tetap gunakan tema default bila penyimpanan diblokir. */ }
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+    </script>
+    <style>
+        html { background-color: #f5f7fa; color-scheme: light; }
+        html[data-theme="dark"] { background-color: #0f1624; color-scheme: dark; }
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="app-root" content="{{ request.script_root }}">
 
     <title>{% block title %}FilterIN - Telkom ASO Magelang{% endblock %}</title>
 
@@ -59,6 +74,7 @@
 </head>
 <body>
 
+{# [BAGIAN] Sidebar — menu mengikuti role; pemeriksaan akses tetap di backend. #}
     <nav class="sidebar" data-testid="sidebar">
         <a href="{{ url_for('dashboard') }}" class="logo" data-testid="sidebar-logo">
             <i class="fa-solid fa-microchip logo-icon"></i>
@@ -202,6 +218,8 @@
         </header>
 
         <div class="content-wrapper">
+{# [BAGIAN] Notifikasi — pesan hasil proses dari backend. #}
+            {% block flash_messages %}
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     <div class="flash-messages" data-testid="flash-messages">
@@ -214,7 +232,11 @@
                     </div>
                 {% endif %}
             {% endwith %}
+            {% endblock %}
 
+            {% if g.stale_sheets %}
+            <div class="flash warning">Data sementara ditampilkan karena sumber belum dapat diperbarui: {{ g.stale_sheets|join(', ') }}. Periksa kembali sebelum mengambil keputusan operasional.</div>
+            {% endif %}
             {% block content %}{% endblock %}
         </div>
     </div>
@@ -316,7 +338,7 @@
     }
     </style>
 
-    <!-- Logout confirmation modal -->
+    {# [FITUR] Logout — konfirmasi; aksi tombol ditangani static/script.js. #}
     <div class="modal-overlay" id="logout-modal-overlay" data-testid="logout-modal">
         <div class="logout-modal">
             <h2>Konfirmasi Logout</h2>
@@ -329,6 +351,7 @@
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+{# Quick Edit, draft, dan highlight setelah simpan ditangani static/filterin-core.js. #}
     <script src="{{ url_for('static', filename='filterin-core.js') }}"></script>
 
     <script>
@@ -366,6 +389,7 @@
             if (indicatorEl) indicatorEl.classList.remove('show');
         }
 
+// [FITUR] User Online — POST /heartbeat; jumlah pengguna dari GET /api/online_count.
         function sendHeartbeat() {
             fetch('/heartbeat', { method: 'POST',
                 headers: { 'Content-Type': 'application/json' }

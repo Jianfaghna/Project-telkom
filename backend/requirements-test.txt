@@ -1,0 +1,3 @@
+# Optional dependencies for the explicitly enabled HTTP integration suite.
+# Install backend/requirements.txt for the application and local regression tests.
+beautifulsoup4>=4.12,<5

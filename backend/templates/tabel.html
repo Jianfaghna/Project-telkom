@@ -222,13 +222,14 @@ mark.hl {
 </style>
 {% endblock %}
 
+{# [FITUR] Data Spreadsheet — route tabel. #}
 {% block content %}
 <div class="main-content">
     <h1 style="color:var(--text,#1e293b); margin-bottom:16px;">
         <i class="fa-solid fa-table"></i> Data Spreadsheet
     </h1>
 
-    <!-- ── Controls: sheet selector + search bar ── -->
+    {# [BAGIAN] Pilihan Sheet dan Pencarian #}
     <div class="tabel-controls">
 
         <label for="kelas"><i class="fa-solid fa-layer-group"></i> Pilih Sheet:</label>
@@ -280,7 +281,7 @@ mark.hl {
         {% endif %}
     {% endif %}
 
-    <!-- ── Tabel ── -->
+    {# [BAGIAN] Tabel Data Spreadsheet #}
     <div class="table-container">
         {% if error %}
             <div class="alert-danger" style="padding:14px; background:#fee2e2; color:#991b1b; border-radius:6px; border:1px solid #fca5a5;">
@@ -298,7 +299,7 @@ mark.hl {
         {% endif %}
     </div>
 
-    <!-- ── Pagination ── -->
+    {# [BAGIAN] Pagination #}
     {% if pagination and pagination.total_rows > 0 %}
     <div class="pagination-container" style="margin-top:16px;">
         <div class="pagination-info" style="color:var(--text-muted,#555);">

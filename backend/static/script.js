@@ -75,57 +75,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ============================================================
-    // 4. LOGIKA TOMBOL OTOMATISASI (SYNC BIMA & UNSC)
-    // ============================================================
-    // Fungsi reusable untuk tombol fetch API
-    function setupAutomationButton(btnId, statusId, url, loadingMsg, successMsg) {
-        const btn = document.getElementById(btnId);
-        const status = document.getElementById(statusId);
-
-        if (btn && status) {
-            btn.addEventListener('click', () => {
-                const originalText = btn.innerHTML; 
-                
-                status.style.color = '#007bff'; // Biru
-                status.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loadingMsg}`;
-                btn.disabled = true;
-                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Memproses...`;
-
-                fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        status.style.color = '#28a745'; // Hijau
-                        status.innerHTML = `<i class="fas fa-check-circle"></i> ${successMsg} (${data.message})`;
-                        setTimeout(() => window.location.reload(), 2000); // Auto refresh
-                    } else {
-                        status.style.color = '#dc3545'; // Merah
-                        status.textContent = 'Error: ' + data.message;
-                        btn.disabled = false;
-                        btn.innerHTML = originalText;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    status.style.color = '#dc3545';
-                    status.textContent = 'Gagal terhubung ke server.';
-                    btn.disabled = false;
-                    btn.innerHTML = originalText;
-                });
-            });
-        }
-    }
-
-    setupAutomationButton('syncButton', 'syncStatus', '/sync-bima', 'Sedang sinkronisasi BIMA...', 'Sinkronisasi Berhasil!');
-    setupAutomationButton('moveUnscButton', 'moveUnscStatus', '/move-to-unsc', 'Memindahkan data ke UNSC...', 'Data Berhasil Dipindah!');
+    // Sinkronisasi BIMA dan pemindahan UNSC ditangani oleh kendalamaster.html.
 
 
     // ============================================================
-    // 5. LOGIKA SUBMENU ACCORDION (SIDEBAR)
+    // 4. LOGIKA SUBMENU ACCORDION (SIDEBAR)
     // ============================================================
     const sidebar = document.querySelector('.sidebar');
     const submenuItems = document.querySelectorAll('.submenu-item');
@@ -158,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ============================================================
-    // 6. LOGIKA SAVE BAR (GLOBAL TRIGGER)
+    // 5. LOGIKA SAVE BAR (GLOBAL TRIGGER)
     // ============================================================
     const saveBar = document.querySelector('.controls-bar');
     
@@ -182,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
     // ============================================================
-    // 7. LOGIKA MINIMIZE SIDEBAR & MAIN CONTENT
+    // 6. LOGIKA MINIMIZE SIDEBAR & MAIN CONTENT
     // ============================================================
     const toggleBtn = document.getElementById('sidebar-toggle');
     const mainContainer = document.getElementById('main-container');
@@ -211,7 +165,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ============================================================
-    // 8. LOGIKA FORM UPLOAD (PREVIEW FILE NAME)
+    // 7. LOGIKA FORM UPLOAD (PREVIEW FILE NAME)
     // ============================================================
     function setupUploadForm(formId, inputId) {
         const form = document.getElementById(formId);
@@ -243,54 +197,9 @@ document.addEventListener('DOMContentLoaded', function() {
     setupUploadForm('form-kpro', null);
 
 
-    // ============================================================
-    // 9. LOGIKA PENANDA DATA BARU (NEW BADGE) - [UPDATE TERBARU]
-    // ============================================================
-    function highlightNewRows() {
-        // 1. Dapatkan Tanggal Hari Ini (Format: DD/MM/YYYY)
-        const now = new Date();
-        const d = String(now.getDate()).padStart(2, '0');
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const y = now.getFullYear();
-        const todayStr = `${d}/${m}/${y}`; // Contoh: 30/11/2025
-
-        // 2. Cari semua baris di tabel
-        const rows = document.querySelectorAll('.editable-table tbody tr');
-
-        rows.forEach(row => {
-            let isNew = false;
-            
-            // 3. Cek setiap sel di baris tersebut
-            const cells = row.querySelectorAll('td');
-            cells.forEach(cell => {
-                // Cek teks murni atau value dari input jika ada
-                const text = cell.innerText.trim() || cell.querySelector('input')?.value || '';
-                
-                // Jika sel mengandung tanggal hari ini
-                if (text.includes(todayStr)) {
-                    isNew = true;
-                }
-            });
-
-            // 4. Jika baris ini baru (ada tanggal hari ini)
-            if (isNew) {
-                row.classList.add('is-new-row'); // Tambah background kuning (CSS)
-                
-                // Tambahkan Badge "NEW" di kolom pertama (biasanya ID/No)
-                const firstCell = row.querySelector('td:nth-child(1)');
-                // Cek apakah badge sudah ada supaya tidak duplikat
-                if (firstCell && !firstCell.querySelector('.new-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'new-badge';
-                    badge.innerText = 'NEW';
-                    firstCell.appendChild(badge);
-                }
-            }
-        });
-    }
+    // Penanda NEW mengikuti hasil sinkronisasi dari backend, bukan tanggal isi baris.
 
     // --- INISIALISASI ---
     highlightActiveLink();
-    highlightNewRows(); // Jalankan fungsi penanda data baru
 
 });

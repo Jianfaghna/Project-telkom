@@ -3,6 +3,18 @@ FilterIN - Flask application (refactored)
 Dibuat untuk Unit Kendala Telkom Magelang
 Mount: /api/*  (di-wrap oleh server.py sebagai ASGI)
 """
+# PANDUAN PENCARIAN FITUR FILTERIN
+# Ctrl+F gabungan penanda [FITUR] dan nama fitur untuk langsung ke bagiannya.
+# Penanda [FITUR] dapat muncul di logika proses dan route fitur yang sama.
+# Penanda [PENDUKUNG] menunjukkan komponen bersama, bukan menu aplikasi.
+# Nama pencarian: Login, Logout, Ganti Password, Hak Akses, Sesi Pengguna,
+# Dashboard, Kendala Master, Quick Edit, Riwayat Order, Penguncian Edit,
+# Data Baru, UNSC, Sinkronisasi BIMA, Upload BIMA, Upload KPRO,
+# User Online, Manajemen Pengguna, Audit Log, KPI IndiHome, Recap Report,
+# Watchlist, Pengumuman, Verifikasi ODP, Cache, Google Sheets, Database.
+# Peta fitur, template, penyimpanan, dan pengujian: docs/PETA_FITUR.md.
+# File tetap satu modul; penanda ini tidak mengubah alur aplikasi.
+
 import os
 import re
 import json
@@ -14,6 +26,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from contextlib import contextmanager
 from pathlib import Path
+from html.parser import HTMLParser
 
 from dotenv import load_dotenv
 import pymysql
@@ -22,10 +35,11 @@ import gspread
 from google.oauth2.service_account import Credentials
 from flask import (
     Flask, render_template, request, redirect, session, url_for,
-    flash, jsonify, g, abort, make_response, send_from_directory
+    flash, jsonify, g, abort, make_response, send_from_directory, has_request_context
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
+from itsdangerous import URLSafeSerializer, BadSignature
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -37,7 +51,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # =====================================================================
-# CONFIG
+# [PENDUKUNG] Konfigurasi - environment, nama Google Sheets, dan batas waktu
 # =====================================================================
 MYSQL = dict(
     host=os.environ['MYSQL_HOST'],
@@ -85,7 +99,7 @@ EDIT_LOCK_TTL_MINUTES = int(os.environ.get('EDIT_LOCK_TTL_MINUTES', 5))
 SYNC_LOG_FILE = str(ROOT_DIR / 'last_sync_time.txt')
 
 # =====================================================================
-# APP INIT
+# [PENDUKUNG] Inisialisasi Aplikasi - session, CSRF, dan pembatasan request
 # =====================================================================
 flask_app = Flask(
     __name__,
@@ -131,10 +145,10 @@ def _deferred_start():
     with flask_app.app_context():
         _start_scheduler()
 
-_threading.Thread(target=_deferred_start, daemon=True).start()
+# Scheduler dimulai setelah seluruh fungsi terdefinisi (lihat akhir modul).
 
 # =====================================================================
-# DATABASE
+# [PENDUKUNG] Database MySQL - koneksi dan transaksi
 # =====================================================================
 @contextmanager
 def db_cursor():
@@ -148,8 +162,42 @@ def db_cursor():
     finally:
         conn.close()
 
+
+@contextmanager
+# [PENDUKUNG] Serialisasi Penulisan Google Sheets - mencegah proses tulis bersamaan
+def sheet_write_guard(spreadsheet_id):
+    """Serialisasi penulis FilterIN lintas worker; bukan lock editor Google Sheets."""
+    name = 'filterin:' + hashlib.sha256(spreadsheet_id.encode()).hexdigest()[:48]
+    with db_cursor() as (conn, cur):
+        cur.execute('SELECT GET_LOCK(%s, 10) AS acquired', (name,))
+        if (cur.fetchone() or {}).get('acquired') != 1:
+            raise RuntimeError('Proses lain sedang menulis spreadsheet. Coba kembali.')
+        try:
+            yield
+        finally:
+            cur.execute('SELECT RELEASE_LOCK(%s)', (name,))
+
+
+def serialized_sheet_write(group):
+    def decorate(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            try:
+                with sheet_write_guard(SPREADSHEET_IDS[group]):
+                    return func(*args, **kwargs)
+            except Exception as exc:
+                flask_app.logger.exception('Penulisan spreadsheet gagal')
+                if not has_request_context():
+                    raise
+                if request.is_json or request.accept_mimetypes.best == 'application/json' or request.endpoint in ('api_sync_bima', 'api_move_to_unsc'):
+                    return jsonify(ok=False, status='error', error=str(exc), message=str(exc)), 503
+                flash(f'Penulisan belum berhasil: {exc}', 'error')
+                return redirect(url_for('dashboard'))
+        return wrapped
+    return decorate
+
 # =====================================================================
-# GOOGLE SHEETS CLIENT + CACHE
+# [PENDUKUNG] Google Sheets - klien API
 # =====================================================================
 _gs_client = None
 _sheet_cache = {}   # key: (spreadsheet_key, sheet_name) -> {'ts':..., 'data':...}
@@ -167,7 +215,7 @@ def gs_client():
     return _gs_client
 
 # =====================================================================
-# MYSQL-BACKED PERSISTENT CACHE
+# [PENDUKUNG] Cache - penyimpanan sementara Google Sheets di MySQL
 # =====================================================================
 
 # Sheet yang di-pre-fetch oleh background job
@@ -231,7 +279,7 @@ def _read_mysql_cache(spreadsheet_key, sheet_name, max_age_seconds=300):
 
 
 def _write_mysql_cache(spreadsheet_key, sheet_name, data):
-    """Tulis data ke MySQL cache."""
+    """Return True hanya jika penulisan cache dan commit berhasil."""
     key = _cache_key(spreadsheet_key, sheet_name)
     try:
         with db_cursor() as (conn, cur):
@@ -243,29 +291,34 @@ def _write_mysql_cache(spreadsheet_key, sheet_name, data):
                     row_count  = VALUES(row_count),
                     fetched_at = NOW()
             """, (key, json.dumps(data, ensure_ascii=False), len(data)))
+        return True
     except Exception as e:
-        print(f'[CACHE] Gagal tulis cache: {e}')
+        print(f'[CACHE] Gagal tulis cache {sheet_name}: {e}')
+        return False
+
+
+def _fetch_sheet_values(spreadsheet_key, sheet_name):
+    """Baca sumber terbaru; pisahkan hasil baca dari status penyimpanan cache."""
+    with sheet_write_guard(spreadsheet_key):
+        ws = gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
+        values = ws.get_all_values()
+        _sheet_cache[(spreadsheet_key, sheet_name)] = {'ts': time.time(), 'data': values}
+        cache_saved = _write_mysql_cache(spreadsheet_key, sheet_name, values)
+    return values, cache_saved
 
 
 def get_sheet_values(spreadsheet_key, sheet_name, force_refresh=False):
     """
-    Cached fetch — urutan prioritas:
-    1. Memory cache (sangat cepat, TTL 30 detik)
-    2. MySQL cache (cepat, TTL 5 menit)
-    3. Google Sheets API (lambat, hanya kalau cache expired)
+    Baca cache bersama sesuai SHEET_CACHE_TTL, lalu sumber Google Sheets.
+    Cache lama maksimal 24 jam hanya untuk tampilan; force_refresh harus fresh.
     """
     key = (spreadsheet_key, sheet_name)
     now = time.time()
 
-    # Level 1: Memory cache (30 detik)
+    # Cache MySQL dibaca lebih dulu agar invalidasi terlihat oleh semua worker.
+    # Memory hanya cadangan baca saat layanan tidak tersedia.
     if not force_refresh:
-        cached = _sheet_cache.get(key)
-        if cached and (now - cached['ts'] < 30):
-            return cached['data']
-
-    # Level 2: MySQL cache (5 menit)
-    if not force_refresh:
-        mysql_data = _read_mysql_cache(spreadsheet_key, sheet_name, max_age_seconds=300)
+        mysql_data = _read_mysql_cache(spreadsheet_key, sheet_name, max_age_seconds=SHEET_CACHE_TTL)
         if mysql_data is not None:
             # Simpan juga ke memory cache
             _sheet_cache[key] = {'ts': now, 'data': mysql_data}
@@ -273,20 +326,22 @@ def get_sheet_values(spreadsheet_key, sheet_name, force_refresh=False):
 
     # Level 3: Fetch dari Google Sheets
     try:
-        ws     = gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
-        values = ws.get_all_values()
-        # Simpan ke memory dan MySQL
-        _sheet_cache[key] = {'ts': now, 'data': values}
-        _write_mysql_cache(spreadsheet_key, sheet_name, values)
+        values, _ = _fetch_sheet_values(spreadsheet_key, sheet_name)
         return values
     except Exception as e:
+        if force_refresh:
+            raise
         # Kalau fetch gagal, coba pakai cache lama meski expired
         stale = _sheet_cache.get(key)
-        if stale:
+        if stale and now - stale['ts'] <= 86400:
+            if has_request_context():
+                g.stale_sheets = getattr(g, 'stale_sheets', set()) | {sheet_name}
             print(f'[CACHE] Fetch gagal ({e}), pakai stale cache untuk {sheet_name}')
             return stale['data']
         stale_mysql = _read_mysql_cache(spreadsheet_key, sheet_name, max_age_seconds=86400)
-        if stale_mysql:
+        if stale_mysql is not None:
+            if has_request_context():
+                g.stale_sheets = getattr(g, 'stale_sheets', set()) | {sheet_name}
             print(f'[CACHE] Fetch gagal ({e}), pakai stale MySQL cache untuk {sheet_name}')
             return stale_mysql
         raise
@@ -318,37 +373,128 @@ def get_worksheet(spreadsheet_key, sheet_name):
     return gs_client().open_by_key(spreadsheet_key).worksheet(sheet_name)
 
 
+# [PENDUKUNG] Penggantian Data Upload - menulis area impor dan membersihkan sisa lama
+def replace_sheet_values(ws, rows, start_row, width, user_entered=False, start_col=1,
+                         preserve_columns=()):
+    """Ganti rentang dalam satu request, termasuk mengosongkan sisa data lama."""
+    if width < 1 or start_col < 1:
+        raise ValueError('Header sheet tujuan kosong.')
+    old = ws.get_all_values()
+    end_row = max(len(old), start_row + len(rows) - 1)
+    if end_row < start_row:
+        return
+    if end_row > ws.row_count:
+        ws.add_rows(end_row - ws.row_count)
+    end_col = start_col + width - 1
+    if end_col > ws.col_count:
+        ws.add_cols(end_col - ws.col_count)
+    padded = [(list(r) + [''] * width)[:width] for r in rows]
+    padded.extend([[''] * width for _ in range(end_row - start_row + 1 - len(padded))])
+    # Sheets API melewati null; kolom ini tetap utuh, termasuk pada sisa baris lama.
+    for row in padded:
+        for index in preserve_columns:
+            row[index] = None
+    ws.update(values=padded,
+              range_name=f'{gspread.utils.rowcol_to_a1(start_row, start_col)}:{gspread.utils.rowcol_to_a1(end_row, end_col)}',
+              value_input_option='USER_ENTERED' if user_entered else 'RAW')
+
+
 # =====================================================================
-# BACKGROUND PRE-FETCH SCHEDULER
+# [PENDUKUNG] Cache - scheduler pembacaan berkala, bukan Sinkronisasi BIMA
 # =====================================================================
 
-def _prefetch_job():
+PREFETCH_INTERVAL_SECONDS = 300
+PREFETCH_STATUS_KEY = 'filterin:prefetch:status'
+PREFETCH_LOCK_NAME = 'filterin:prefetch'
+_cache_scheduler = None
+
+
+def _save_prefetch_status(conn, cur, state):
+    # Metadata proses memakai tabel cache yang sudah ada, bukan data operasional.
+    cur.execute('''INSERT INTO sheet_cache (cache_key, data_json, row_count)
+                   VALUES (%s, %s, 0) ON DUPLICATE KEY UPDATE
+                   data_json=VALUES(data_json), fetched_at=NOW()''',
+                (PREFETCH_STATUS_KEY, json.dumps(state)))
+    conn.commit()
+
+
+def _read_prefetch_status():
+    with db_cursor() as (conn, cur):
+        cur.execute('SELECT data_json FROM sheet_cache WHERE cache_key=%s', (PREFETCH_STATUS_KEY,))
+        row = cur.fetchone()
+        state = json.loads(row['data_json']) if row and row.get('data_json') else None
+        if state and state.get('state') == 'running':
+            cur.execute('SELECT IS_USED_LOCK(%s) AS owner', (PREFETCH_LOCK_NAME,))
+            if not (cur.fetchone() or {}).get('owner'):
+                # Baca ulang untuk membedakan proses selesai dari proses terhenti.
+                conn.commit()
+                cur.execute('SELECT data_json FROM sheet_cache WHERE cache_key=%s', (PREFETCH_STATUS_KEY,))
+                row = cur.fetchone()
+                state = json.loads(row['data_json']) if row and row.get('data_json') else None
+                if state and state.get('state') == 'running':
+                    state['state'] = 'interrupted'
+        return state
+
+
+def _prefetch_job(trigger='automatic'):
+    """Satu proses lintas worker; statusnya dapat dipantau dari dashboard."""
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute('SELECT GET_LOCK(%s, 0) AS acquired', (PREFETCH_LOCK_NAME,))
+            if (cur.fetchone() or {}).get('acquired') != 1:
+                print('[PREFETCH] Dilewati: pembaruan lain masih berjalan')
+                return
+            try:
+                state = {'run_id': uuid.uuid4().hex, 'state': 'running', 'trigger': trigger,
+                         'started_at': datetime.now().isoformat(timespec='seconds'),
+                         'finished_at': None, 'total': len(PREFETCH_SHEETS), 'items': []}
+                _save_prefetch_status(conn, cur, state)
+                _run_prefetch(state, lambda: _save_prefetch_status(conn, cur, state))
+            finally:
+                cur.execute('SELECT RELEASE_LOCK(%s)', (PREFETCH_LOCK_NAME,))
+    except Exception:
+        flask_app.logger.exception('Proses pembaruan cache terhenti')
+
+
+def _run_prefetch(state, save_status):
     """
     Background job — fetch sheet yang paling sering diakses
     dan simpan ke MySQL cache. Jalan tiap 5 menit.
     """
     print(f'[PREFETCH] Mulai pre-fetch {len(PREFETCH_SHEETS)} sheets...')
-    success = 0
+    fetched = cached = 0
     for sp_key, sh_key in PREFETCH_SHEETS:
+        sh_name = SHEET_NAMES.get(sp_key, {}).get(sh_key, sh_key)
         try:
             sp_id   = SPREADSHEET_IDS.get(sp_key)
-            sh_name = SHEET_NAMES.get(sp_key, {}).get(sh_key)
-            if not sp_id or not sh_name:
-                continue
-            ws     = gs_client().open_by_key(sp_id).worksheet(sh_name)
-            values = ws.get_all_values()
-            _write_mysql_cache(sp_id, sh_name, values)
-            # Update memory cache juga
-            _sheet_cache[(sp_id, sh_name)] = {'ts': time.time(), 'data': values}
-            success += 1
-            print(f'[PREFETCH] ✅ {sh_name} — {len(values)} baris')
+            if not sp_id or not SHEET_NAMES.get(sp_key, {}).get(sh_key):
+                print(f'[PREFETCH] Dilewati {sh_name}: konfigurasi sheet belum lengkap')
+                outcome = 'unconfigured'
+            else:
+                values, cache_saved = _fetch_sheet_values(sp_id, sh_name)
+                fetched += 1
+                if cache_saved:
+                    cached += 1
+                    outcome = 'saved'
+                    print(f'[PREFETCH] OK {sh_name} - {len(values)} baris; cache MySQL tersimpan')
+                else:
+                    outcome = 'cache_failed'
+                    print(f'[PREFETCH] PERINGATAN {sh_name} - {len(values)} baris terbaca; cache MySQL gagal disimpan')
         except Exception as e:
-            print(f'[PREFETCH] ❌ {sh_key}: {e}')
-    print(f'[PREFETCH] Selesai — {success}/{len(PREFETCH_SHEETS)} berhasil')
+            outcome = 'fetch_failed'
+            print(f'[PREFETCH] Gagal mengambil {sh_name}: {e}')
+        state['items'].append({'sheet_name': sh_name, 'status': outcome})
+        save_status()
+    total = len(PREFETCH_SHEETS)
+    state.update(state='complete' if cached == total else 'partial', fetched=fetched,
+                 cached=cached, total=total, finished_at=datetime.now().isoformat(timespec='seconds'))
+    save_status()
+    print(f'[PREFETCH] Selesai - sumber terbaca {fetched}/{total}; cache MySQL tersimpan {cached}/{total}')
 
 
 def _start_scheduler():
     """Mulai background scheduler saat Flask start."""
+    global _cache_scheduler
     try:
         _ensure_cache_table()
 
@@ -361,12 +507,13 @@ def _start_scheduler():
         scheduler = BackgroundScheduler(timezone='Asia/Jakarta')
         scheduler.add_job(
             func    = _prefetch_job,
-            trigger = IntervalTrigger(minutes=5),
+            trigger = IntervalTrigger(seconds=PREFETCH_INTERVAL_SECONDS),
             id      = 'prefetch_sheets',
             name    = 'Pre-fetch Google Sheets ke MySQL cache',
             replace_existing = True,
         )
         scheduler.start()
+        _cache_scheduler = scheduler
         atexit.register(lambda: scheduler.shutdown(wait=False))
         print('[SCHEDULER] Background pre-fetch dimulai (interval: 5 menit)')
     except Exception as e:
@@ -374,6 +521,7 @@ def _start_scheduler():
 
 
 # =====================================================================
+# [PENDUKUNG] Pengolahan Data - format nilai, tanggal, status, dan metadata sinkronisasi
 def prepare_dataframe_for_sheets(df):
     for col in df.select_dtypes(include=['datetime64[ns]']).columns:
         df[col] = df[col].dt.strftime('%Y-%m-%d')
@@ -432,7 +580,7 @@ def get_last_sync_time():
     return "Belum ada data"
 
 # =====================================================================
-# AUTH DECORATORS
+# [FITUR] Hak Akses - pemeriksaan login dan role pada halaman maupun API
 # =====================================================================
 def login_required(f):
     @wraps(f)
@@ -481,12 +629,12 @@ def api_role_required(*roles):
     return deco
 
 # =====================================================================
-# AUDIT LOG
+# [FITUR] Audit Log - pencatatan aktivitas (halaman dan hapus log ada di bawah)
 # =====================================================================
 def audit(action, sheet_name=None, row_key=None, column_name=None,
           old_value=None, new_value=None):
     try:
-        user = session.get('user') or {}
+        user = (session.get('user') or {}) if has_request_context() else {}
         with db_cursor() as (conn, cur):
             cur.execute(
                 """INSERT INTO audit_log
@@ -495,15 +643,19 @@ def audit(action, sheet_name=None, row_key=None, column_name=None,
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (user.get('username', 'SYSTEM'), user.get('nama', ''),
                  sheet_name, row_key, column_name,
-                 (str(old_value)[:500] if old_value is not None else None),
-                 (str(new_value)[:500] if new_value is not None else None),
-                 action, request.remote_addr if request else None)
+                 (str(old_value) if old_value is not None else None),
+                 (str(new_value) if new_value is not None else None),
+                 action, request.remote_addr if has_request_context() else None)
             )
+        return True
     except Exception as e:
         print(f"[AUDIT ERROR] {e}")
+        if has_request_context():
+            g.audit_failed = True
+        return False
 
 # =====================================================================
-# EDIT LOCK MANAGER
+# [FITUR] Penguncian Edit - kepemilikan, masa berlaku, dan perpanjangan lock
 # =====================================================================
 def cleanup_expired_locks():
     try:
@@ -555,6 +707,26 @@ def release_lock(sheet_name, row_key):
     except Exception as e:
         print(f"[UNLOCK ERROR] {e}")
 
+
+def renew_lock(sheet_name, row_key):
+    """Extend an existing, unexpired lock only; never acquire another user's lock."""
+    username = session['user']['username']
+    with db_cursor() as (conn, cur):
+        cur.execute(
+            """UPDATE edit_locks SET locked_at=NOW()
+               WHERE sheet_name=%s AND row_key=%s AND locked_by=%s
+                 AND locked_at >= (NOW() - INTERVAL %s MINUTE)""",
+            (sheet_name, row_key, username, EDIT_LOCK_TTL_MINUTES))
+        if cur.rowcount:
+            return True
+        # MySQL can report zero changed rows for a renewal in the same second.
+        cur.execute(
+            """SELECT 1 AS owned FROM edit_locks
+               WHERE sheet_name=%s AND row_key=%s AND locked_by=%s
+                 AND locked_at >= (NOW() - INTERVAL %s MINUTE)""",
+            (sheet_name, row_key, username, EDIT_LOCK_TTL_MINUTES))
+        return bool(cur.fetchone())
+
 def get_active_locks(sheet_name):
     """Return dict {row_key: {locked_by, locked_by_nama, locked_at}} for active locks."""
     cleanup_expired_locks()
@@ -574,7 +746,7 @@ def get_active_locks(sheet_name):
         return {}
 
 # =====================================================================
-# AUTOMATION LOGIC (refactored from original app.py)
+# [FITUR] Sinkronisasi BIMA - logika IMPORT BIMA (FRESH) ke DB KENDALA (MASTER)
 # =====================================================================
 def sync_bima_to_kendala():
     """Sync IMPORT BIMA (FRESH) -> DB KENDALA (MASTER). Track new ORDER_IDs."""
@@ -586,6 +758,9 @@ def sync_bima_to_kendala():
         bima_data = bima_sheet.get_all_values()
         kendala_data = kendala_sheet.get_all_values()
 
+        if len(kendala_data) < 2:
+            return {'status': 'error', 'message': 'Header DB KENDALA pada baris 2 tidak tersedia.'}
+
         if not bima_data or len(bima_data) < 2:
             return {"status": "success", "message": "Tidak ada data di IMPORT BIMA (FRESH).",
                     "updates": 0, "appends": 0, "new_order_ids": []}
@@ -596,11 +771,21 @@ def sync_bima_to_kendala():
         except ValueError:
             return {"status": "error", "message": "Kolom 'ORDER_ID' tidak ditemukan di Baris 2 DB KENDALA."}
 
+        expected = [ {'WONUM'}, {'ORDER_ID'}, {'DEVICE_ID'}, {'STO'}, {'DATEL'},
+                     {'STATUS_RESUME'}, {'SUBERRORCODE', 'SUB_ERROR_CODE'},
+                     {'ENGINEERMEMO', 'ENGINEER_MEMO'}, {'ORDER_DATE'},
+                     {'LAST_UPDATED_DATE', 'TGL_UPDATE_STATUS'} ]
+        target = [h.upper().replace(' ', '_') for h in kendala_headers[1:11]]
+        if len(target) != 10 or any(h not in choices for h, choices in zip(target, expected)):
+            return {'status': 'error', 'message': 'Susunan kolom B:K Kendala Master tidak sesuai pemetaan sinkronisasi. Tidak ada data ditulis.'}
+
         existing_order_map = {}
         for i in range(2, len(kendala_data)):
             if len(kendala_data[i]) > order_id_col_idx:
                 oid = str(kendala_data[i][order_id_col_idx]).strip()
                 if oid:
+                    if oid in existing_order_map:
+                        return {'status': 'error', 'message': f'ORDER_ID duplikat di Kendala Master: {oid}'}
                     existing_order_map[oid] = i + 1
 
         bh = [str(h).strip() for h in bima_data[0]]
@@ -618,12 +803,15 @@ def sync_bima_to_kendala():
             return {"status": "error", "message": f"Header BIMA hilang: {e}"}
 
         updates, appends, new_ids = [], [], []
+        source_ids = set()
         for row in bima_data[1:]:
-            if len(row) <= max(bi_wonum, bi_orderid, bi_devid, bi_sto, bi_status, bi_suberr, bi_memo, bi_odate, bi_udate):
-                continue
+            row = row + [''] * (len(bh) - len(row))
             oid = str(row[bi_orderid]).strip()
             if not oid:
                 continue
+            if oid in source_ids:
+                return {'status': 'error', 'message': f'ORDER_ID duplikat di BIMA: {oid}. Periksa sumber sebelum sinkronisasi.'}
+            source_ids.add(oid)
             new_vals = [
                 row[bi_wonum], oid, row[bi_devid], row[bi_sto],
                 map_sto_to_datel(row[bi_sto]), handle_status_resume(row[bi_status]),
@@ -637,18 +825,22 @@ def sync_bima_to_kendala():
                 appends.append([''] + new_vals)
                 new_ids.append(oid)
 
-        if updates:
-            kendala_sheet.batch_update(updates, value_input_option='USER_ENTERED')
-
         if appends:
-            kendala_sheet.add_rows(len(appends))
+            required_rows = len(kendala_data) + len(appends)
+            if required_rows > kendala_sheet.row_count:
+                kendala_sheet.add_rows(required_rows - kendala_sheet.row_count)
             append_ups = []
             next_row = len(kendala_data) + 1
             for i, r in enumerate(appends):
                 current = next_row + i
                 append_ups.append({'range': f"A{current}:K{current}", 'values': [r]})
-            if append_ups:
-                kendala_sheet.batch_update(append_ups, value_input_option='USER_ENTERED')
+            updates.extend(append_ups)
+
+        if updates:
+            try:
+                kendala_sheet.batch_update(updates, value_input_option='USER_ENTERED')
+            finally:
+                invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
 
         save_last_sync_time()
         invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
@@ -656,7 +848,7 @@ def sync_bima_to_kendala():
         # Track new order_ids for user notification
         batch_id = None
         if new_ids:
-            batch_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+            batch_id = uuid.uuid4().hex
             try:
                 with db_cursor() as (conn, cur):
                     cur.executemany(
@@ -667,12 +859,12 @@ def sync_bima_to_kendala():
                 print(f"[SYNC TRACK ERROR] {e}")
 
         audit('sync_bima', sheet_name=SHEET_NAMES['kendala']['kendalamaster'],
-              new_value=f"updates={len(updates)}, appends={len(appends)}, new_ids={len(new_ids)}")
+              new_value=f"updates={len(updates) - len(appends)}, appends={len(appends)}, new_ids={len(new_ids)}")
 
         return {
             "status": "success",
-            "message": f"Sukses! Update: {len(updates)}, Tambah: {len(appends)}",
-            "updates": len(updates),
+            "message": f"Sukses! Update: {len(updates) - len(appends)}, Tambah: {len(appends)}",
+            "updates": len(updates) - len(appends),
             "appends": len(appends),
             "new_order_ids": new_ids[:200],   # cap to keep payload small
             "batch_id": batch_id,
@@ -682,6 +874,7 @@ def sync_bima_to_kendala():
         return {"status": "error", "message": str(e)}
 
 
+# [FITUR] UNSC - logika pemindahan dari Kendala Master
 def move_kendala_to_unsc():
     """Pindahkan baris VERIFIKASI UNSC + BELUM ADA dari DB KENDALA ke UNSC."""
     try:
@@ -694,7 +887,7 @@ def move_kendala_to_unsc():
             return {"status": "success", "message": "DB KENDALA kosong."}
 
         kendala_headers = clean_headers(kendala_values[1])
-        df = pd.DataFrame(kendala_values[2:], columns=kendala_headers)
+        df = _sheet_frame(kendala_values)
 
         feedback_col = 'FEEDBACK ASO'
         cek_db_col = 'CEK DB UNSC'
@@ -710,25 +903,41 @@ def move_kendala_to_unsc():
         if df_move.empty:
             return {"status": "success", "message": "Tidak ada data untuk dipindah."}
 
+        # CEK DB UNSC dapat terlambat dihitung Google Sheets: cek tujuan langsung.
+        unsc_values = unsc_sheet.get_all_values()
+        if len(unsc_values) < 2 or 'ORDER_ID' not in clean_headers(unsc_values[1]):
+            return {'status': 'error', 'message': 'Header ORDER_ID UNSC tidak tersedia.'}
+        dest_idx = clean_headers(unsc_values[1]).index('ORDER_ID')
+        if dest_idx != 1 or len(kendala_headers) < 10 or kendala_headers[2] != 'ORDER_ID':
+            return {'status': 'error', 'message': 'Susunan kolom transfer UNSC berubah. Periksa pemetaan sumber/tujuan.'}
+        existing_ids = {str(r[dest_idx]).strip() for r in unsc_values[2:] if len(r) > dest_idx}
+        df_move = df_move[df_move['ORDER_ID'].astype(str).str.strip().ne('') &
+                          ~df_move['ORDER_ID'].astype(str).str.strip().isin(existing_ids)]
+        df_move = df_move.drop_duplicates(subset=['ORDER_ID'])
+        if df_move.empty:
+            return {'status': 'success', 'message': 'Seluruh order sudah ada di UNSC.'}
+
         cols_idx = list(range(2, 10))
         cols_names = [kendala_headers[i] for i in cols_idx]
         data_move = df_move[cols_names].copy()
         data_move.insert(0, 'EMPTY_A', '')
         values = data_move.values.tolist()
 
-        col_b = unsc_sheet.col_values(2)
-        start_row = max(len(col_b) + 1, 3)
+        start_row = max(len(unsc_values) + 1, 3)
         num_rows = len(values)
         cur_max = unsc_sheet.row_count
         if start_row + num_rows > cur_max:
             unsc_sheet.add_rows((start_row + num_rows) - cur_max)
 
-        unsc_sheet.update(
-            values=values,
-            range_name=f"A{start_row}:I{start_row + num_rows - 1}",
-            value_input_option='USER_ENTERED',
-        )
-        invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
+        try:
+            unsc_sheet.update(
+                values=values,
+                range_name=f"A{start_row}:I{start_row + num_rows - 1}",
+                value_input_option='RAW',
+            )
+        finally:
+            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
+            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
         audit('move_to_unsc', sheet_name=SHEET_NAMES['kendala']['unsc'],
               new_value=f"{len(df_move)} baris dipindah")
 
@@ -738,35 +947,82 @@ def move_kendala_to_unsc():
         return {"status": "error", "message": str(e)}
 
 
-def hitung_rumus_otomatis(df):
+# [PENDUKUNG] Pengolahan Tabel - identitas baris, filter, dan perhitungan tampilan
+def _sheet_frame(values):
+    """Header baris 2, identitas baris asli tetap utuh setelah filter."""
+    if len(values) < 2:
+        return pd.DataFrame()
+    headers = [str(h).strip().upper() for h in values[1]]
+    rows = [(r + [''] * len(headers))[:len(headers)] for r in values[2:]]
+    df = pd.DataFrame(rows, columns=headers).fillna('')
+    df['__SHEET_ROW__'] = range(3, 3 + len(df))
+    keys = [c for c in ('ORDER_ID', 'WONUM') if c in df.columns]
+    cols = keys or headers
+    return df[df[cols].astype(str).apply(lambda s: s.str.strip()).ne('').any(axis=1)].copy()
+
+
+DATE_HELPERS = ['ORDER_DATE_DT', 'LAST_UPDATED_DATE_DT', 'TGL_UPDATE_STATUS_DT']
+AGE_LABELS = ['A. <1 HARI', 'B. 1 - 3 HARI', 'C. >3 HARI',
+              'D. >1 MINGGU', 'E. >2 MINGGU', 'F. >3 MINGGU', 'G. >1 BULAN']
+
+
+def _filter_kendala(df, args):
+    for arg, col in [('sto', 'STO'), ('feedback', 'FEEDBACK ASO'),
+                     ('is_active', 'IS_ACTIVE_KENDALA'), ('umur', 'UMUR KENDALA'),
+                     ('status', 'STATUS' if 'STATUS' in df.columns else 'STATUS_RESUME')]:
+        value = args.get(arg, '').strip()
+        if value and col in df.columns:
+            df = df[df[col].astype(str).str.strip().str.upper() == value.upper()]
+    if args.get('new_only') == '1':
+        df = df[df['__IS_NEW__']]
+    query = args.get('search', '').strip().lower()
+    if query:
+        mask = pd.Series(False, index=df.index)
+        for col in ('WONUM', 'ORDER_ID', 'DEVICE_ID'):
+            if col in df.columns:
+                mask |= df[col].astype(str).str.lower().str.contains(query, regex=False, na=False)
+        df = df[mask]
+    if 'ORDER_DATE_DT' in df.columns:
+        for arg, upper in [('date_from', False), ('date_to', True)]:
+            date = pd.to_datetime(args.get(arg, ''), format='%Y-%m-%d', errors='coerce')
+            if pd.notna(date):
+                df = df[df['ORDER_DATE_DT'] < date + pd.Timedelta(days=1)] if upper else df[df['ORDER_DATE_DT'] >= date]
+    return df
+
+
+def hitung_rumus_otomatis(df, keep_dates=False):
     """Add LAMA WO, UMUR KENDALA, IS_ACTIVE_KENDALA columns (vectorized)."""
     df.columns = df.columns.str.strip().str.upper()
 
     for col in ['ORDER_DATE', 'LAST_UPDATED_DATE', 'TGL_UPDATE_STATUS']:
         if col in df.columns:
-            df[col + '_DT'] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
+            df[col + '_DT'] = pd.to_datetime(df[col], format='mixed', dayfirst=True, errors='coerce')
 
     now = pd.Timestamp(datetime.now())
 
     # Vectorized IS_ACTIVE (hybrid keyword + manual override)
-    manual_val = df.get('IS_ACTIVE_KENDALA', pd.Series([''] * len(df))).astype(str).str.strip().str.upper()
+    blank = pd.Series('', index=df.index, dtype='str')
+    missing_date = pd.Series(pd.NaT, index=df.index, dtype='datetime64[ns]')
+    manual_val = df.get('IS_ACTIVE_KENDALA', blank).astype(str).str.strip().str.upper()
     keywords = ['PS COMPLETED', 'DONE', 'CANCEL', 'REVOKE', 'COMPLETED PS', 'MATI LISTRIK']
     combined = (
-        df.get('STATUS_RESUME', '').astype(str) + ' ' +
-        df.get('FEEDBACK ASO', '').astype(str) + ' ' +
-        df.get('ACTUAL KENDALA', '').astype(str)
+        df.get('STATUS_RESUME', blank).astype(str) + ' ' +
+        df.get('FEEDBACK ASO', blank).astype(str) + ' ' +
+        df.get('ACTUAL KENDALA', blank).astype(str)
     ).str.upper()
 
     keyword_inactive = combined.apply(lambda t: any(k in t for k in keywords))
     is_active = pd.Series(['ACTIVE'] * len(df), index=df.index)
     is_active[keyword_inactive] = 'INACTIVE'
+    manual_mask = manual_val.isin(['ACTIVE', 'INACTIVE'])
+    is_active[manual_mask] = manual_val[manual_mask]
 
     # LAMA WO
-    start = df.get('ORDER_DATE_DT', pd.Series([pd.NaT] * len(df)))
-    end_inactive = df.get('LAST_UPDATED_DATE_DT', pd.Series([pd.NaT] * len(df)))
-    fallback_end = df.get('TGL_UPDATE_STATUS_DT', pd.Series([pd.NaT] * len(df)))
+    start = df.get('ORDER_DATE_DT', missing_date)
+    end_inactive = df.get('LAST_UPDATED_DATE_DT', missing_date)
+    fallback_end = df.get('TGL_UPDATE_STATUS_DT', missing_date)
     end_inactive = end_inactive.fillna(fallback_end).fillna(now)
-    end_series = pd.Series([now] * len(df), index=df.index)
+    end_series = pd.Series(now, index=df.index, dtype='datetime64[ns]')
     mask_inactive = (is_active == 'INACTIVE')
     end_series[mask_inactive] = end_inactive[mask_inactive]
     delta = (end_series - start).dt.days.fillna(0).astype(int)
@@ -790,7 +1046,7 @@ def hitung_rumus_otomatis(df):
     df['IS_ACTIVE_KENDALA'] = is_active
 
     # cleanup helper cols
-    for c in ['ORDER_DATE_DT', 'LAST_UPDATED_DATE_DT', 'TGL_UPDATE_STATUS_DT']:
+    for c in ([] if keep_dates else DATE_HELPERS):
         if c in df.columns:
             df.drop(columns=c, inplace=True)
 
@@ -798,7 +1054,7 @@ def hitung_rumus_otomatis(df):
 
 
 # =====================================================================
-# CONTEXT PROCESSORS & HOOKS
+# [FITUR] Sesi Pengguna - variabel tampilan dan validasi ulang akun setiap request
 # =====================================================================
 @flask_app.context_processor
 def inject_globals():
@@ -813,17 +1069,51 @@ def inject_globals():
 
 @flask_app.before_request
 def _log_session_ping():
-    # Touch session so it rolls over
+    # Hak akses harus mengikuti MySQL, termasuk akun yang dihapus saat masih login.
     if 'user' in session:
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute('SELECT id, nama, username, role, password FROM users WHERE id=%s',
+                            (session['user']['id'],))
+                user = cur.fetchone()
+            stamp = hashlib.sha256(user['password'].encode()).hexdigest() if user else None
+            if not user or session.get('auth_stamp') != stamp:
+                session.clear()
+            else:
+                user = dict(user)
+                user.pop('password', None)
+                session['user'] = user
+        except Exception:
+            return jsonify(error='Layanan pengguna tidak tersedia. Coba kembali.'), 503
         session.permanent = True
 
 # =====================================================================
-# ROUTES - AUTH
+# [PENDUKUNG] Respons Layanan - pemberitahuan cache lama dan kegagalan Audit Log
 # =====================================================================
+@flask_app.after_request
+def _report_service_warnings(response):
+    stale = sorted(getattr(g, 'stale_sheets', set()))
+    audit_failed = getattr(g, 'audit_failed', False)
+    if stale:
+        response.headers['X-FilterIN-Stale'] = '1'
+    if response.is_json and (stale or audit_failed):
+        payload = response.get_json()
+        if isinstance(payload, dict):
+            payload['stale_sheets'] = stale
+            payload['audit_warning'] = audit_failed
+            response.set_data(flask_app.json.dumps(payload))
+    if audit_failed and not response.is_json:
+        flash('Data tersimpan, tetapi Audit Log gagal dicatat. Hubungi admin.', 'warning')
+    return response
+
+
+# [FITUR] Halaman Awal - pengalihan ke Login atau Dashboard
 @flask_app.route('/')
 def home():
     return redirect(url_for('dashboard')) if 'user' in session else redirect(url_for('login'))
 
+# [FITUR] Login - validasi akun, pembatasan percobaan, dan pembentukan sesi
+# Tampilan: templates/login.html | MySQL: users, login_attempts
 @flask_app.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute", methods=['POST'])
 def login():
@@ -872,10 +1162,12 @@ def login():
                     ok = True
                     try:
                         with db_cursor() as (conn, cur):
+                            upgraded = generate_password_hash(password)
                             cur.execute(
                                 "UPDATE users SET password=%s WHERE id=%s",
-                                (generate_password_hash(password), user['id'])
+                                (upgraded, user['id'])
                             )
+                        user['password'] = upgraded
                     except Exception as e:
                         print(f"[PASSWORD UPGRADE ERROR] {e}")
 
@@ -892,7 +1184,9 @@ def login():
             pass
 
         if ok:
+            session.clear()
             session.permanent = True
+            session['auth_stamp'] = hashlib.sha256(user['password'].encode()).hexdigest()
             session['user'] = {
                 'id': user['id'],
                 'nama': user['nama'],
@@ -905,11 +1199,20 @@ def login():
             flash("Username atau password salah.", "error")
     return render_template("login.html")
 
+# [FITUR] Logout - membersihkan sesi, status online, dan lock pengguna
 @flask_app.route('/logout')
 def logout():
+    if 'user' in session:
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute('DELETE FROM user_sessions WHERE username=%s', (session['user']['username'],))
+                cur.execute('DELETE FROM edit_locks WHERE locked_by=%s', (session['user']['username'],))
+        except Exception:
+            flask_app.logger.exception('Gagal membersihkan status logout')
     session.clear()
     return redirect(url_for('login'))
 
+# [FITUR] Ganti Password - validasi password lama dan penyimpanan hash baru
 @flask_app.route('/ganti_password', methods=['GET', 'POST'])
 @login_required
 def ganti_password():
@@ -930,21 +1233,24 @@ def ganti_password():
                               if row['password'].startswith(('pbkdf2:', 'scrypt:', 'argon2'))
                               else row['password'] == old_pw)
                 if ok:
+                    new_hash = generate_password_hash(new_pw)
                     cur.execute(
                         "UPDATE users SET password=%s WHERE username=%s",
-                        (generate_password_hash(new_pw), username)
+                        (new_hash, username)
                     )
-                    flash("Password berhasil diganti.", "success")
-                    audit('change_password')
                 else:
                     flash("Password lama salah.", "error")
+            if ok:
+                session['auth_stamp'] = hashlib.sha256(new_hash.encode()).hexdigest()
+                flash("Password berhasil diubah.", "success")
+                audit('change_password')
         except Exception as e:
             flash(f"Error: {e}", "error")
         return redirect(url_for('ganti_password'))
     return render_template("ganti_password.html")
 
 # =====================================================================
-# ROUTES - DASHBOARD
+# [FITUR] Dashboard - perhitungan ringkasan, halaman, dan pembaruan statistik
 # =====================================================================
 def _compute_dashboard_stats():
     """Hitung semua statistik untuk dashboard termasuk data chart."""
@@ -967,15 +1273,12 @@ def _compute_dashboard_stats():
         if len(values) < 3:
             return empty
  
-        header = [str(h).strip() for h in values[1]]
-        df = pd.DataFrame(values[2:], columns=header)
-        df.columns = df.columns.str.strip()
-        df = hitung_rumus_otomatis(df)
+        df = hitung_rumus_otomatis(_sheet_frame(values), keep_dates=True)
  
         total = len(df)
         fb    = df.get('FEEDBACK ASO', pd.Series([''] * total)).astype(str).str.strip().str.upper()
         done  = int((fb == 'DONE TATI').sum())
-        unsc  = int(fb.isin(['UNSC','VERIFIKASI UNSC']).sum())
+        unsc  = int(fb.isin(['UNSC','VERIFIKASI UNSC','VERIVIKASI UNSC']).sum())
         pending = total - done - unsc
         active  = int((df.get('IS_ACTIVE_KENDALA', pd.Series()) == 'ACTIVE').sum())
  
@@ -1008,8 +1311,7 @@ def _compute_dashboard_stats():
             chart_feedback = {'labels': [], 'values': []}
  
         # ── Chart 3: Umur Kendala bins ──
-        UMUR_ORDER = ['A. <1 HARI','B. 1-3 HARI','C. 4-7 HARI',
-                      'D. 1-2 MINGGU','E. 2-3 MINGGU','F. >3 MINGGU','G. >1 BULAN']
+        UMUR_ORDER = AGE_LABELS
         if 'UMUR KENDALA' in df_active.columns:
             umur_counts = df_active['UMUR KENDALA'].str.strip().str.upper().value_counts()
             # urutkan sesuai UMUR_ORDER
@@ -1054,6 +1356,7 @@ def _compute_dashboard_stats():
  
     except Exception as e:
         print(f'[DASHBOARD STATS ERROR] {e}')
+        empty['error'] = 'Data dashboard belum dapat dimuat. Angka berikut bukan hasil pembacaan terbaru.'
         return empty
  
  
@@ -1061,6 +1364,8 @@ def _compute_dashboard_stats():
 @login_required
 def dashboard():
     stats = _compute_dashboard_stats()
+    if stats.get('error'):
+        flash(stats['error'], 'error')
     last_sync_str = get_last_sync_time()
     unseen = 0
     try:
@@ -1122,12 +1427,110 @@ def dashboard_stats():
         unsc            = stats['unsc'],
         pending         = stats['pending'],
         active          = stats['active'],
+        error           = stats.get('error'),
         unseen_new_rows = unseen,
     )
 
 # =====================================================================
-# ROUTES - KENDALA MASTER (with Quick Edit + New Data Highlight)
+# [FITUR] Kendala Master - penyimpanan bersama, daftar data, dan endpoint pengeditan
 # =====================================================================
+KENDALA_EDITABLE = {'ACTUAL KENDALA', 'FEEDBACK ASO', 'TGL FEEDBACK',
+                    'NOTES ASO', 'CURRENT_UIC', 'IS_ACTIVE_KENDALA'}
+
+
+# [FITUR] Quick Edit - pemeriksaan snapshot dan penyimpanan (juga dipakai edit massal)
+# Interaksi modal/highlight: static/filterin-core.js | Endpoint: api_update_kendala_row
+def _row_token(sheet, row_num, headers, values):
+    row = dict(zip([str(h).strip() for h in headers], values + [''] * (len(headers) - len(values))))
+    editable = KENDALA_EDITABLE if sheet == SHEET_NAMES['kendala']['kendalamaster'] else {
+        h for h in row if 'STATUS' in h or 'VALIDASI' in h}
+    return URLSafeSerializer(flask_app.secret_key, salt='sheet-row').dumps({
+        'sheet': sheet, 'row_num': row_num,
+        'values': {key: val for key, val in row.items() if key == 'ORDER_ID' or key in editable}})
+
+
+class EditConflict(ValueError):
+    pass
+
+
+def _save_sheet_changes(sheet, changes, snapshots, action):
+    """Valider seluruh batch sebelum menulis; audit hanya setelah Sheets berhasil."""
+    ws = get_worksheet(SPREADSHEET_IDS['kendala'], sheet)
+    values = ws.get_all_values()
+    if len(values) < 2:
+        raise EditConflict('Header sheet tidak tersedia.')
+    headers = [str(h).strip() for h in values[1]]
+    header_map = {h: i + 1 for i, h in enumerate(headers)}
+    allowed = KENDALA_EDITABLE if sheet == SHEET_NAMES['kendala']['kendalamaster'] else {
+        h for h in headers if 'STATUS' in h or 'VALIDASI' in h}
+    if 'ORDER_ID' not in header_map:
+        raise EditConflict('Kolom ORDER_ID tidak ditemukan.')
+    cells, records, locked, saved_rows = [], [], [], {}
+    try:
+        for rn, updates in changes.items():
+            if rn < 3 or rn > len(values) or rn not in snapshots:
+                raise EditConflict('Identitas baris tidak valid. Muat ulang halaman.')
+            old = dict(zip(headers, values[rn - 1] + [''] * len(headers)))
+            snapshot = snapshots[rn]
+            oid = str(old.get('ORDER_ID', '')).strip()
+            if not oid or oid != str(snapshot.get('ORDER_ID', '')).strip():
+                raise EditConflict('Posisi ORDER_ID berubah. Muat ulang halaman sebelum menyimpan.')
+            ok, lock = acquire_lock(sheet, oid)
+            if not ok:
+                raise EditConflict('Baris sedang dikunci atau layanan penguncian tidak tersedia.')
+            locked.append(oid)
+            for col, val in updates.items():
+                if col not in allowed or col not in header_map:
+                    raise ValueError(f'Kolom tidak dapat diedit: {col}')
+                if not isinstance(val, str):
+                    raise ValueError(f'Nilai {col} harus berupa teks.')
+                if col not in snapshot or str(old.get(col, '')) != str(snapshot[col]):
+                    raise EditConflict(f'{oid}: {col} telah berubah. Muat ulang data.')
+                if col == 'IS_ACTIVE_KENDALA' and val not in ('', 'ACTIVE', 'INACTIVE'):
+                    raise ValueError('Status aktif tidak valid.')
+                if old.get(col, '') != val:
+                    cells.append(gspread.Cell(rn, header_map[col], val))
+                    records.append((oid, col, old.get(col, ''), val))
+                    old[col] = val
+            saved_rows[rn] = old
+        if cells:
+            try:
+                ws.update_cells(cells, value_input_option='RAW')
+            finally:
+                invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], sheet)
+            for oid, col, before, after in records:
+                audit(action, sheet_name=sheet, row_key=oid,
+                      column_name=col, old_value=before, new_value=after)
+        if has_request_context():
+            g.saved_row_tokens = {
+                rn: _row_token(sheet, rn, headers, [row.get(h, '') for h in headers])
+                for rn, row in saved_rows.items()
+            }
+        return len(cells)
+    finally:
+        for oid in locked:
+            release_lock(sheet, oid)
+
+
+def _save_bulk_form(sheet, action):
+    changes, snapshots = {}, {}
+    for key, value in request.form.items():
+        match = re.fullmatch(r'(.+?)\[(\d+)\]', key)
+        if not match:
+            continue
+        col, rn = match.group(1), int(match.group(2))
+        if col == '__snapshot__':
+            try:
+                payload = URLSafeSerializer(flask_app.secret_key, salt='sheet-row').loads(value)
+            except BadSignature as exc:
+                raise EditConflict('Identitas data tidak valid. Muat ulang halaman.') from exc
+            if payload['sheet'] != sheet or payload['row_num'] != rn:
+                raise EditConflict('Identitas sheet/baris tidak cocok.')
+            snapshots[rn] = payload['values']
+        elif col not in ('LAMA WO', 'UMUR KENDALA'):
+            changes.setdefault(rn, {})[col.strip()] = value
+    return _save_sheet_changes(sheet, changes, snapshots, action)
+# [FITUR] Data Baru - penanda NEW berdasarkan sinkronisasi dan pengguna yang melihat
 def _get_new_order_ids(hours=24):
     """Return dict {order_id: sync_time_str} of recently synced rows."""
     try:
@@ -1135,8 +1538,10 @@ def _get_new_order_ids(hours=24):
             cur.execute(
                 """SELECT order_id, sync_time, sync_batch_id
                    FROM sync_new_rows
-                   WHERE sync_time > (NOW() - INTERVAL %s HOUR)""",
-                (hours,)
+                   WHERE sync_time > (NOW() - INTERVAL %s HOUR)
+                     AND (seen_by IS NULL OR NOT JSON_CONTAINS(seen_by, JSON_QUOTE(%s)))
+                   ORDER BY sync_time""",
+                (hours, session['user']['username'])
             )
             rows = cur.fetchall() or []
         return {r['order_id']: {
@@ -1146,6 +1551,13 @@ def _get_new_order_ids(hours=24):
     except Exception:
         return {}
 
+def _kendala_view_revision(headers, data, sheet_rows, new_flags, total):
+    """Versi data tampilan; tidak bergantung pada format sel atau pilihan dropdown."""
+    payload = [headers, data, sheet_rows, new_flags, total]
+    return hashlib.sha256(flask_app.json.dumps(payload).encode('utf-8')).hexdigest()
+
+
+# [FITUR] Kendala Master - halaman, pencarian, penyaringan, dan pagination
 @flask_app.route('/kendala_master')
 @login_required
 def kendala_master():
@@ -1167,69 +1579,16 @@ def kendala_master():
         per_page = 100
 
         all_data = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
-        if not all_data or len(all_data) < 4:
+        if not all_data or len(all_data) < 2:
             raise ValueError("Tidak ada data di sheet Kendala Master.")
 
-        header = [str(h).strip() for h in all_data[1]]
-        raw_rows = all_data[2:]
-        df = pd.DataFrame(raw_rows, columns=header)
-        df.columns = df.columns.str.strip()
-
-        # Track source row number in sheet (for update_kendala) - uppercase to survive hitung_rumus_otomatis
-        df['__SHEET_ROW__'] = range(3, 3 + len(df))
-
-        # ── Buang baris yang sepenuhnya kosong (misal baris 1 di Google Sheet kosong) ──
-        key_cols = [c for c in ['ORDER_ID', 'WONUM'] if c in df.columns]
-        if key_cols:
-            df = df[df[key_cols].apply(lambda r: any(str(v).strip() for v in r), axis=1)]
-        else:
-            df = df[df.apply(lambda r: r.astype(str).str.strip().ne('').any(), axis=1)]
-
-        df = hitung_rumus_otomatis(df)
+        df = hitung_rumus_otomatis(_sheet_frame(all_data), keep_dates=True)
 
         # Mark new rows
         new_ids_map = _get_new_order_ids(24)
         df['__IS_NEW__'] = df.get('ORDER_ID', pd.Series([''] * len(df))).astype(str).str.strip().isin(new_ids_map.keys())
 
-        if filter_sto and 'STO' in df.columns:
-            df = df[df['STO'] == filter_sto]
-        if filter_status:
-            col_status = 'STATUS' if 'STATUS' in df.columns else 'STATUS_RESUME'
-            if col_status in df.columns:
-                df = df[df[col_status] == filter_status]
-        if filter_feedback and 'FEEDBACK ASO' in df.columns:
-            df = df[df['FEEDBACK ASO'] == filter_feedback]
-        if filter_new_only:
-            df = df[df['__IS_NEW__']]
-        if search_query:
-            mask = pd.Series(False, index=df.index)
-            for col in ['WONUM', 'ORDER_ID', 'DEVICE_ID']:
-                if col in df.columns:
-                    mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False)
-            df = df[mask]
-
-        # ── Filter tambahan: IS_ACTIVE, UMUR KENDALA, tanggal ──
-        if filter_is_active and 'IS_ACTIVE_KENDALA' in df.columns:
-            df = df[df['IS_ACTIVE_KENDALA'] == filter_is_active]
-
-        if filter_umur and 'UMUR KENDALA' in df.columns:
-            df = df[df['UMUR KENDALA'].str.strip().str.upper() == filter_umur.upper()]
-
-        if filter_date_from and 'ORDER_DATE_DT' in df.columns:
-            try:
-                dt_from = pd.to_datetime(filter_date_from, dayfirst=True, errors='coerce')
-                if pd.notna(dt_from):
-                    df = df[df['ORDER_DATE_DT'] >= dt_from]
-            except Exception:
-                pass
-
-        if filter_date_to and 'ORDER_DATE_DT' in df.columns:
-            try:
-                dt_to = pd.to_datetime(filter_date_to, dayfirst=True, errors='coerce') + pd.Timedelta(days=1)
-                if pd.notna(dt_to):
-                    df = df[df['ORDER_DATE_DT'] < dt_to]
-            except Exception:
-                pass
+        df = _filter_kendala(df, request.args)
 
 
         total_rows = len(df)
@@ -1239,8 +1598,10 @@ def kendala_master():
         start_index = (current_page - 1) * per_page
         end_index = start_index + per_page
 
-        df_page = df.iloc[start_index:end_index].fillna("")
+        df_page = df.iloc[start_index:end_index].drop(columns=DATE_HELPERS, errors='ignore').fillna("")
         sheet_rows = df_page['__SHEET_ROW__'].tolist()
+        row_tokens = [_row_token(SHEET_NAMES['kendala']['kendalamaster'], rn,
+                                 all_data[1], all_data[rn - 1]) for rn in sheet_rows]
         is_new_flags = df_page['__IS_NEW__'].tolist()
 
         # drop helper cols before render
@@ -1299,12 +1660,15 @@ def kendala_master():
             user=session.get('user'),
             header=header_to_render, data=data_to_render,
             sheet_rows=sheet_rows, is_new_flags=is_new_flags,
+            row_tokens=row_tokens,
             active_locks=active_locks,
             error=error, pagination=pagination,
             feedback_options=feedback_options, actual_options=actual_options,
             is_active_options=is_active_options,
             total_new_today=sum(is_new_flags),
             last_sync=get_last_sync_time(),
+            data_revision=_kendala_view_revision(
+                header_to_render, data_to_render, sheet_rows, is_new_flags, total_rows),
         )
     except Exception as e:
         traceback.print_exc()
@@ -1317,84 +1681,71 @@ def kendala_master():
             is_active_options=['ACTIVE', 'INACTIVE'], total_new_today=0,
         )
 
+# [FITUR] Kendala Master - API pembaruan tabel berkala (polling)
 @flask_app.route('/kendala_data')
 @api_login_required
 def api_kendala_data():
     """Lightweight JSON endpoint for auto-refresh without full page reload."""
     try:
-        filter_sto = request.args.get('sto', '')
-        filter_status = request.args.get('status', '')
-        filter_feedback = request.args.get('feedback', '')
-        filter_new_only = request.args.get('new_only', '0') == '1'
-        search_query = request.args.get('search', '').strip().lower()
         current_page = max(request.args.get('p', 1, type=int), 1)
         per_page = 100
 
         all_data = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
-        if not all_data or len(all_data) < 4:
-            return jsonify({'data': [], 'sheet_rows': [], 'is_new_flags': [], 'total': 0})
+        if not all_data or len(all_data) < 2:
+            return jsonify({'data': [], 'sheet_rows': [], 'is_new_flags': [], 'total': 0,
+                            'revision': _kendala_view_revision([], [], [], [], 0)})
 
-        header = [str(h).strip() for h in all_data[1]]
-        df = pd.DataFrame(all_data[2:], columns=header)
-        df.columns = df.columns.str.strip()
-        df['__SHEET_ROW__'] = range(3, 3 + len(df))
-        df = hitung_rumus_otomatis(df)
+        df = hitung_rumus_otomatis(_sheet_frame(all_data), keep_dates=True)
 
         new_ids_map = _get_new_order_ids(24)
         df['__IS_NEW__'] = df.get('ORDER_ID', pd.Series([''] * len(df))).astype(str).str.strip().isin(new_ids_map.keys())
 
-        if filter_sto and 'STO' in df.columns:
-            df = df[df['STO'] == filter_sto]
-        if filter_status:
-            col_status = 'STATUS' if 'STATUS' in df.columns else 'STATUS_RESUME'
-            if col_status in df.columns:
-                df = df[df[col_status] == filter_status]
-        if filter_feedback and 'FEEDBACK ASO' in df.columns:
-            df = df[df['FEEDBACK ASO'] == filter_feedback]
-        if filter_new_only:
-            df = df[df['__IS_NEW__']]
-        if search_query:
-            mask = pd.Series(False, index=df.index)
-            for col in ['WONUM', 'ORDER_ID', 'DEVICE_ID']:
-                if col in df.columns:
-                    mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False)
-            df = df[mask]
+        df = _filter_kendala(df, request.args)
 
         total = len(df)
+        current_page = min(current_page, max((total + per_page - 1) // per_page, 1))
         start_index = (current_page - 1) * per_page
-        df_page = df.iloc[start_index:start_index + per_page].fillna("")
+        df_page = df.iloc[start_index:start_index + per_page].drop(columns=DATE_HELPERS, errors='ignore').fillna("")
 
         active_locks = get_active_locks(SHEET_NAMES['kendala']['kendalamaster'])
 
+        display_df = df_page.drop(columns=['__SHEET_ROW__', '__IS_NEW__'], errors='ignore')
+        data = display_df.values.tolist()
+        sheet_rows = df_page['__SHEET_ROW__'].tolist()
+        new_flags = df_page['__IS_NEW__'].tolist()
         return jsonify({
-            'data': df_page.drop(columns=['__SHEET_ROW__', '__IS_NEW__'], errors='ignore').values.tolist(),
-            'sheet_rows': df_page['__SHEET_ROW__'].tolist(),
-            'is_new_flags': df_page['__IS_NEW__'].tolist(),
+            'data': data,
+            'sheet_rows': sheet_rows,
+            'is_new_flags': new_flags,
             'start_index': start_index,
             'total': total,
             'active_locks': active_locks,
+            'revision': _kendala_view_revision(list(display_df.columns), data, sheet_rows, new_flags, total),
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# [FITUR] Quick Edit - membaca data terbaru sebelum modal diisi
 @flask_app.route('/kendala_row/<int:row_num>')
 @api_login_required
 def api_kendala_row(row_num):
     """Get a single row by sheet row number - for quick edit modal."""
     try:
-        all_data = get_sheet_values(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
-        if row_num - 1 >= len(all_data) or row_num < 3:
+        ws = get_worksheet(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['kendalamaster'])
+        if row_num < 3 or row_num > ws.row_count:
             return jsonify({'error': 'Row tidak ditemukan'}), 404
-        header = [str(h).strip() for h in all_data[1]]
-        row = all_data[row_num - 1]
+        header = [str(h).strip() for h in ws.row_values(2)]
+        row = ws.row_values(row_num)
         row = row + [''] * (len(header) - len(row))
         row_dict = dict(zip(header, row[:len(header)]))
         return jsonify({'row': row_dict, 'row_num': row_num, 'sheet_name': SHEET_NAMES['kendala']['kendalamaster']})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# [FITUR] Riwayat Order - membaca Audit Log berdasarkan ORDER_ID
 @flask_app.route('/order_history/<path:order_id>')
 @api_login_required
+@api_role_required('admin', 'operator')
 def order_history(order_id):
     """Ambil riwayat perubahan untuk satu Order ID dari audit_log."""
     try:
@@ -1402,7 +1753,7 @@ def order_history(order_id):
             cur.execute(
                 """SELECT
                     a.username,
-                    COALESCE(u.nama, a.username) AS nama,
+                    COALESCE(NULLIF(a.nama, ''), u.nama, a.username) AS nama,
                     a.column_name,
                     a.old_value,
                     a.new_value,
@@ -1425,6 +1776,7 @@ def order_history(order_id):
         return jsonify({'history': [], 'error': str(e)}), 500
 
 
+# [FITUR] Penguncian Edit - API mengambil, memperpanjang, melepas, dan melihat lock
 @flask_app.route('/lock', methods=['POST'])
 @api_login_required
 @api_role_required('admin', 'operator')
@@ -1432,16 +1784,36 @@ def api_lock():
     """Acquire soft lock on a row before editing."""
     data = request.get_json() or {}
     sheet_name = data.get('sheet_name')
-    row_key = str(data.get('row_key', ''))
-    if not sheet_name or not row_key:
+    row_key = str(data.get('row_key', '')).strip()
+    if sheet_name not in (SHEET_NAMES['kendala']['kendalamaster'], SHEET_NAMES['kendala']['unsc']) or not row_key.strip():
         return jsonify({'error': 'sheet_name & row_key required'}), 400
     ok, lock = acquire_lock(sheet_name, row_key)
     return jsonify({
         'ok': ok,
+        'ttl_seconds': EDIT_LOCK_TTL_MINUTES * 60,
         'locked_by': lock.get('locked_by') if lock else None,
         'locked_by_nama': lock.get('locked_by_nama') if lock else None,
         'locked_at': lock.get('locked_at').strftime('%H:%M') if lock and lock.get('locked_at') else None,
     })
+
+@flask_app.route('/renew-lock', methods=['POST'])
+@api_login_required
+@api_role_required('admin', 'operator')
+def api_renew_lock():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error='Payload JSON tidak valid.'), 400
+    sheet_name = data.get('sheet_name')
+    row_key = str(data.get('row_key') or '').strip()
+    if sheet_name not in (SHEET_NAMES['kendala']['kendalamaster'], SHEET_NAMES['kendala']['unsc']) or not row_key:
+        return jsonify(ok=False, error='sheet_name & row_key required'), 400
+    try:
+        if not renew_lock(sheet_name, row_key):
+            return jsonify(ok=False, error='Hak edit sudah berakhir atau baris sedang digunakan pengguna lain.'), 409
+        return jsonify(ok=True, ttl_seconds=EDIT_LOCK_TTL_MINUTES * 60)
+    except Exception:
+        flask_app.logger.exception('Perpanjangan lock gagal')
+        return jsonify(ok=False, error='Akses edit belum dapat diperiksa. Input Anda tetap dipertahankan.'), 503
 
 @flask_app.route('/unlock', methods=['POST'])
 @api_login_required
@@ -1449,7 +1821,7 @@ def api_lock():
 def api_unlock():
     data = request.get_json() or {}
     sheet_name = data.get('sheet_name')
-    row_key = str(data.get('row_key', ''))
+    row_key = str(data.get('row_key', '')).strip()
     if sheet_name and row_key:
         release_lock(sheet_name, row_key)
     return jsonify({'ok': True})
@@ -1482,158 +1854,61 @@ def api_kendala_locks():
         return jsonify({'locks': {}, 'error': str(e)}), 500
 
 
+# [FITUR] Kendala Master - simpan perubahan melalui form edit massal
 @flask_app.route('/update_kendala', methods=['POST'])
 @login_required
 @role_required('admin', 'operator')
+@serialized_sheet_write('kendala')
 def update_kendala():
-    """Legacy bulk update (form-encoded col[row]=value) — dengan cek row lock."""
     try:
-        updates_by_row = {}
-        pattern = re.compile(r'(.+?)\[(\d+)\]')
-        for key, value in request.form.items():
-            m = pattern.match(key)
-            if m:
-                col = m.group(1)
-                rn = int(m.group(2))
-                updates_by_row.setdefault(rn, {})[col] = value
+        count = _save_bulk_form(SHEET_NAMES['kendala']['kendalamaster'], 'update_bulk')
+        if request.accept_mimetypes.best == 'application/json':
+            if not getattr(g, 'audit_failed', False):
+                flash(f"Berhasil menyimpan {count} perubahan kolom.", "success")
+            return jsonify(ok=True, updated=count, row_tokens=getattr(g, 'saved_row_tokens', {}),
+                           audit_warning=bool(getattr(g, 'audit_failed', False)))
+        flash(f"Berhasil menyimpan {count} perubahan kolom.", "success")
+    except Exception as exc:
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify(ok=False, error=str(exc)), (409 if isinstance(exc, EditConflict) else 400 if isinstance(exc, ValueError) else 500)
+        flash(f"Data belum tersimpan: {exc}", "error")
+    return redirect(url_for('kendala_master'))
 
-        sheet = SHEET_NAMES['kendala']['kendalamaster']
-        ws = get_worksheet(SPREADSHEET_IDS['kendala'], sheet)
-        headers = ws.row_values(2)
-        header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
-
-        # ═══ CEK ROW LOCK ═══
-        # Ambil ORDER_ID untuk setiap row yang mau di-update, lalu cek lock
-        order_id_col = header_map.get('ORDER_ID')
-        skipped_locked = []  # list of (row_num, order_id, locked_by_nama)
-        allowed_rows = set(updates_by_row.keys())
-
-        if order_id_col:
-            # Read the whole ORDER_ID column once (satu API call)
-            order_id_column = ws.col_values(order_id_col)  # index 0 = row 1
-            current_user = session['user']['username']
-
-            # Ambil semua lock aktif untuk sheet ini
-            cleanup_expired_locks()
-            try:
-                with db_cursor() as (conn, cur):
-                    cur.execute(
-                        "SELECT row_key, locked_by, locked_by_nama FROM edit_locks WHERE sheet_name=%s",
-                        (sheet,)
-                    )
-                    active_locks = {r['row_key']: r for r in cur.fetchall()}
-            except Exception:
-                active_locks = {}
-
-            # Filter baris yang locked oleh user lain
-            for rn in list(updates_by_row.keys()):
-                # row_num N mapped to ORDER_ID at index N-1
-                if 0 < rn <= len(order_id_column):
-                    order_id = str(order_id_column[rn - 1]).strip()
-                    lock = active_locks.get(order_id)
-                    if lock and lock['locked_by'] != current_user:
-                        skipped_locked.append((rn, order_id, lock.get('locked_by_nama') or lock['locked_by']))
-                        allowed_rows.discard(rn)
-
-        # Build cells hanya untuk baris yang diizinkan
-        cells = []
-        for rn in allowed_rows:
-            for col, val in updates_by_row[rn].items():
-                col_clean = col.strip()
-                if col_clean in header_map:
-                    cells.append(gspread.Cell(row=rn, col=header_map[col_clean], value=val))
-
-        if cells:
-            ws.update_cells(cells, value_input_option='USER_ENTERED')
-            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], sheet)
-            audit('update_bulk', sheet_name=sheet,
-                  new_value=f"{len(allowed_rows)} rows")
-            flash(f"Berhasil memperbarui {len(allowed_rows)} baris data.", "success")
-
-        # Peringatan untuk baris yang di-skip karena locked
-        if skipped_locked:
-            lockers = ', '.join(sorted(set(nama for _, _, nama in skipped_locked)))
-            flash(
-                f"{len(skipped_locked)} baris TIDAK tersimpan karena sedang diedit oleh: {lockers}. "
-                f"Silakan refresh halaman untuk melihat versi terbaru.",
-                "warning"
-            )
-        elif not cells:
-            flash("Tidak ada perubahan yang disimpan.", "info")
-
-    except Exception as e:
-        flash(f"Gagal mengupdate data: {e}", "error")
-        traceback.print_exc()
-    return redirect(request.referrer or url_for('kendala_master'))
-
+# [FITUR] Quick Edit - simpan perubahan satu baris
 @flask_app.route('/update_kendala_row', methods=['POST'])
 @api_login_required
 @api_role_required('admin', 'operator')
+@serialized_sheet_write('kendala')
 def api_update_kendala_row():
-    """Quick-edit save: JSON {row_num, row_key(ORDER_ID), updates:{col:val}}."""
-    data = request.get_json(force=True) or {}
-    row_num = int(data.get('row_num', 0))
-    row_key = str(data.get('row_key', '')).strip()
-    updates = data.get('updates', {})
-    sheet = SHEET_NAMES['kendala']['kendalamaster']
-
-    if not row_num or not row_key or not updates:
-        return jsonify({'ok': False, 'error': 'Missing row_num/row_key/updates'}), 400
-
-    # Check lock
-    cleanup_expired_locks()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error='Payload JSON tidak valid.'), 400
     try:
-        with db_cursor() as (conn, cur):
-            cur.execute(
-                "SELECT locked_by, locked_by_nama, locked_at FROM edit_locks WHERE sheet_name=%s AND row_key=%s",
-                (sheet, row_key)
-            )
-            lk = cur.fetchone()
-        if lk and lk['locked_by'] != session['user']['username']:
-            nama = lk.get('locked_by_nama') or lk['locked_by']
-            locked_at = lk.get('locked_at')
-            waktu = locked_at.strftime('%H:%M') if locked_at else '-'
-            return jsonify({
-                'ok': False,
-                'error': f"Row ini sedang diedit oleh {nama} sejak {waktu}. Perubahan Anda tidak dapat disimpan untuk mencegah tabrakan data. Silakan refresh halaman untuk melihat perubahan terbaru."
-            }), 409
+        row_num = int(data.get('row_num', 0))
+        row_key = str(data.get('row_key', '')).strip()
+        updates = data.get('updates')
+        original = data.get('original_values')
+        if row_num < 3 or not row_key or not isinstance(updates, dict) or not updates:
+            raise ValueError('row_num, row_key, dan updates wajib diisi.')
+        if not isinstance(original, dict):
+            raise ValueError('Data awal diperlukan. Muat ulang modal edit.')
+        if str(original.get('ORDER_ID', '')).strip() != row_key:
+            raise EditConflict('Identitas ORDER_ID tidak cocok.')
+        count = _save_sheet_changes(
+            SHEET_NAMES['kendala']['kendalamaster'], {row_num: updates},
+            {row_num: original}, 'update_row')
+        return jsonify(ok=True, updated=count, skipped=[],
+                       row_token=getattr(g, 'saved_row_tokens', {}).get(row_num),
+                       audit_warning=bool(getattr(g, 'audit_failed', False)))
+    except EditConflict as exc:
+        return jsonify(ok=False, error=str(exc)), 409
+    except (ValueError, TypeError) as exc:
+        return jsonify(ok=False, error=str(exc)), 400
     except Exception:
-        pass
+        flask_app.logger.exception('Quick edit gagal')
+        return jsonify(ok=False, error='Penyimpanan gagal. Muat ulang untuk memeriksa data terbaru.'), 500
 
-    try:
-        ws = get_worksheet(SPREADSHEET_IDS['kendala'], sheet)
-        headers = ws.row_values(2)
-        # header_map: exact match
-        header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
-        # header_map_norm: normalized (uppercase + underscore) untuk fallback lookup
-        header_map_norm = {
-            str(h).strip().upper().replace(' ', '_'): i + 1
-            for i, h in enumerate(headers)
-        }
-        old_row = ws.row_values(row_num)
-        cells = []
-        skipped = []
-        for col, val in updates.items():
-            col_clean = col.strip()
-            col_norm  = col_clean.upper().replace(' ', '_')
-            idx = header_map.get(col_clean) or header_map_norm.get(col_norm)
-            if idx:
-                old_val = old_row[idx - 1] if len(old_row) >= idx else ''
-                cells.append(gspread.Cell(row=row_num, col=idx, value=val))
-                audit('update_row', sheet_name=sheet, row_key=row_key,
-                      column_name=col_clean, old_value=old_val, new_value=val)
-            else:
-                skipped.append(col_clean)
-        if cells:
-            ws.update_cells(cells, value_input_option='USER_ENTERED')
-            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], sheet)
-            release_lock(sheet, row_key)
-            return jsonify({'ok': True, 'updated': len(cells), 'skipped': skipped})
-        return jsonify({'ok': False, 'error': f'Kolom tidak ditemukan di sheet: {skipped}'}), 400
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'ok': False, 'error': str(e)}), 500
-
+# [FITUR] Data Baru - tandai data baru sebagai sudah dilihat oleh pengguna saat ini
 @flask_app.route('/mark_new_seen', methods=['POST'])
 @api_login_required
 def api_mark_new_seen():
@@ -1655,7 +1930,7 @@ def api_mark_new_seen():
         return jsonify({'ok': False, 'error': str(e)})
 
 # =====================================================================
-# ROUTES - UNSC
+# [FITUR] UNSC - halaman, pencarian, penyaringan, dan pagination
 # =====================================================================
 @flask_app.route('/unsc')
 @login_required
@@ -1676,10 +1951,7 @@ def unsc():
         if not all_data or len(all_data) < 2:
             raise ValueError("Data UNSC kosong.")
 
-        header = [str(h).strip() for h in all_data[1]]
-        df = pd.DataFrame(all_data[2:], columns=header)
-        df.columns = df.columns.str.strip()
-        df['__SHEET_ROW__'] = range(3, 3 + len(df))
+        df = _sheet_frame(all_data)
 
         if filter_sto and 'STO' in df.columns:
             df = df[df['STO'] == filter_sto]
@@ -1693,7 +1965,7 @@ def unsc():
             mask = pd.Series(False, index=df.index)
             for col in ['ORDER_ID', 'DEVICE_ID', 'NAMA SALESFORCE', 'STO']:
                 if col in df.columns:
-                    mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False)
+                    mask |= df[col].astype(str).str.lower().str.contains(search_query, na=False, regex=False)
             df = df[mask]
 
         total_rows = len(df)
@@ -1704,6 +1976,8 @@ def unsc():
         df_page = df.iloc[start_index:start_index + per_page].fillna("")
 
         sheet_rows = df_page['__SHEET_ROW__'].tolist()
+        row_tokens = [_row_token(SHEET_NAMES['kendala']['unsc'], rn,
+                                 all_data[1], all_data[rn - 1]) for rn in sheet_rows]
         display_df = df_page.drop(columns=['__SHEET_ROW__'], errors='ignore')
         data_to_render = display_df.values.tolist()
         header_to_render = list(display_df.columns)
@@ -1728,13 +2002,14 @@ def unsc():
         'unsc.html',
         data=data_to_render, header=header_to_render,
         sheet_rows=locals().get('sheet_rows', []),
+        row_tokens=locals().get('row_tokens', []),
         pagination=pagination,
         unsc_status_options=unsc_status_options, unsc_validasi_options=unsc_validasi_options,
         error=error,
     )
 
 # =====================================================================
-# ROUTE: /unsc_data  (real-time polling untuk halaman UNSC)
+# [FITUR] UNSC - API pembaruan tabel berkala (polling)
 # =====================================================================
 @flask_app.route('/unsc_data')
 @api_login_required
@@ -1743,7 +2018,7 @@ def api_unsc_data():
     filter_status   = request.args.get('status', '')
     filter_validasi = request.args.get('validasi', '')
     search_query    = request.args.get('search', '').strip().lower()
-    current_page    = request.args.get('p', 1, type=int)
+    current_page    = max(request.args.get('p', 1, type=int), 1)
     per_page        = 100
 
     try:
@@ -1754,11 +2029,7 @@ def api_unsc_data():
         if not all_data or len(all_data) < 2:
             return jsonify({'data': []})
 
-        header   = [str(h).strip() for h in all_data[1]]
-        raw_rows = all_data[2:]
-
-        df = pd.DataFrame(raw_rows, columns=header)
-        df.columns = df.columns.str.strip()
+        df = _sheet_frame(all_data)
 
         if filter_sto and 'STO' in df.columns:
             df = df[df['STO'] == filter_sto]
@@ -1776,15 +2047,17 @@ def api_unsc_data():
             for col in ['ORDER_ID', 'DEVICE_ID', 'NAMA SALESFORCE', 'STO']:
                 if col in df.columns:
                     mask |= df[col].astype(str).str.lower().str.contains(
-                        search_query, na=False
+                        search_query, na=False, regex=False
                     )
             df = df[mask]
 
+        current_page = min(current_page, max((len(df) + per_page - 1) // per_page, 1))
         start_index = (current_page - 1) * per_page
         df_page     = df.iloc[start_index:start_index + per_page].fillna('')
 
         return jsonify({
-            'data':        df_page.values.tolist(),
+            'data':        df_page.drop(columns=['__SHEET_ROW__']).values.tolist(),
+            'sheet_rows':  df_page['__SHEET_ROW__'].tolist(),
             'start_index': start_index,
         })
 
@@ -1792,81 +2065,130 @@ def api_unsc_data():
         return jsonify({'error': str(e)}), 500
 
 
-"""
-=============================================================
-JUGA: Di dashboard.html (bawaan GitHub), fetch ke /api/dashboard_stats
-Ganti dengan /dashboard_stats (tanpa /api/).
 
-Buka templates/dashboard.html, cari:
-    fetch('/api/dashboard_stats')
-Ganti dengan:
-    fetch('/dashboard_stats')
-=============================================================
-"""
-
+# [FITUR] UNSC - simpan perubahan melalui form edit massal
 @flask_app.route('/update_unsc', methods=['POST'])
 @login_required
 @role_required('admin', 'operator')
+@serialized_sheet_write('kendala')
 def update_unsc():
     try:
-        updates_by_row = {}
-        pattern = re.compile(r'(.+?)\[(\d+)\]')
-        for key, value in request.form.items():
-            m = pattern.match(key)
-            if m:
-                col = m.group(1)
-                rn = int(m.group(2))
-                updates_by_row.setdefault(rn, {})[col] = value
-
-        ws = get_worksheet(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
-        headers = ws.row_values(2)
-        header_map = {str(h).strip(): i + 1 for i, h in enumerate(headers)}
-
-        cells = []
-        for rn, changes in updates_by_row.items():
-            for col, val in changes.items():
-                col_clean = col.strip()
-                if col_clean in header_map:
-                    cells.append(gspread.Cell(row=rn, col=header_map[col_clean], value=val))
-        if cells:
-            ws.update_cells(cells, value_input_option='USER_ENTERED')
-            invalidate_sheet_cache(SPREADSHEET_IDS['kendala'], SHEET_NAMES['kendala']['unsc'])
-            audit('update_unsc', sheet_name=SHEET_NAMES['kendala']['unsc'], new_value=f"{len(updates_by_row)} rows")
-            flash(f"Berhasil memperbarui {len(updates_by_row)} baris data UNSC.", "success")
-        else:
-            flash("Tidak ada perubahan yang disimpan.", "info")
-    except Exception as e:
-        flash(f"Gagal mengupdate data: {e}", "error")
-    return redirect(request.referrer or url_for('unsc'))
+        count = _save_bulk_form(SHEET_NAMES['kendala']['unsc'], 'update_unsc')
+        if request.accept_mimetypes.best == 'application/json':
+            if not getattr(g, 'audit_failed', False):
+                flash(f"Berhasil menyimpan {count} perubahan kolom UNSC.", "success")
+            return jsonify(ok=True, updated=count, row_tokens=getattr(g, 'saved_row_tokens', {}),
+                           audit_warning=bool(getattr(g, 'audit_failed', False)))
+        flash(f"Berhasil menyimpan {count} perubahan kolom UNSC.", "success")
+    except Exception as exc:
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify(ok=False, error=str(exc)), (409 if isinstance(exc, EditConflict) else 400 if isinstance(exc, ValueError) else 500)
+        flash(f"Data belum tersimpan: {exc}", "error")
+    return redirect(url_for('unsc'))
 
 # =====================================================================
-# ROUTES - SYNC / MOVE
+# [FITUR] Sinkronisasi BIMA - endpoint tombol sinkronisasi
 # =====================================================================
 @flask_app.route('/sync-bima', methods=['POST'])
 @api_login_required
 @api_role_required('admin', 'operator')
+@serialized_sheet_write('kendala')
 def api_sync_bima():
     result = sync_bima_to_kendala()
     return jsonify(result), (200 if result['status'] == 'success' else 500)
 
+# [FITUR] UNSC - endpoint tombol pemindahan dari Kendala Master
 @flask_app.route('/move-to-unsc', methods=['POST'])
 @api_login_required
 @api_role_required('admin', 'operator')
+@serialized_sheet_write('kendala')
 def api_move_to_unsc():
     result = move_kendala_to_unsc()
     return jsonify(result), (200 if result['status'] == 'success' else 500)
 
 # =====================================================================
-# ROUTES - UPLOAD (Excel filter flow)
+# [FITUR] Upload BIMA / Upload KPRO - validasi file dan pemetaan kolom bersama
 # =====================================================================
 ALLOWED_KELAS = {'04', '05', '06'}
 
+
+def _upload_result(message, success=False, kelas=None, status=400):
+    """AJAX menerima JSON agar flash tidak habis dikonsumsi oleh fetch redirect."""
+    target = url_for('tabel', kelas=kelas) if success else url_for('upload')
+    if request.accept_mimetypes.best == 'application/json':
+        if success:
+            flash(message, 'success')
+        return jsonify(success=success, message=message, redirect_url=target), (200 if success else status)
+    flash(message, 'success' if success else 'error')
+    return redirect(target)
+
+
+def _source_headers(headers, source):
+    if not headers:
+        raise KPIValidationError(f'{source} kosong.')
+    names, seen = [], set()
+    for value in headers:
+        if not isinstance(value, str) or not value.strip():
+            raise KPIValidationError(f'{source} memiliki nama kolom kosong atau bukan teks.')
+        name = re.sub(r'\s+', ' ', value.strip())
+        if name.casefold() in seen:
+            raise KPIValidationError(f'{source} memiliki kolom duplikat: {name}.')
+        seen.add(name.casefold())
+        names.append(name)
+    return names
+
+
+def _read_source_upload(file):
+    if not file or not file.filename:
+        raise KPIValidationError('Harap pilih file Excel terlebih dahulu.')
+    extension = file.filename.rsplit('.', 1)[-1].lower()
+    if extension not in ('xlsx', 'xls'):
+        raise KPIValidationError('Format file tidak valid. Gunakan .xlsx atau .xls; PDF, Word, dan CSV tidak diterima.')
+    try:
+        raw = _read_excel_upload(file, extension)
+    except KPIValidationError:
+        raise
+    except Exception as exc:
+        raise KPIValidationError('File tidak dapat dibaca sebagai Excel atau ekspor tabel .xls. File mungkin rusak atau hanya diganti ekstensinya.') from exc
+    if raw.empty:
+        raise KPIValidationError('File Excel kosong.')
+    names = _source_headers(raw.iloc[0].tolist(), 'Header file')
+    frame = raw.iloc[1:].copy()
+    frame.columns = names
+    blank = frame.apply(lambda col: col.map(
+        lambda value: pd.isna(value) or (isinstance(value, str) and not value.strip())))
+    frame = frame.loc[~blank.all(axis=1)].reset_index(drop=True)
+    if frame.empty:
+        raise KPIValidationError('File hanya berisi header atau tidak memiliki baris data.')
+    return frame
+
+
+def _align_source_upload(frame, headers, excluded=()):
+    names = _source_headers(headers, 'Header sheet tujuan')
+    lookup = {_kpi_header_key(c): c for c in frame.columns}
+    excluded_keys = {_kpi_header_key(c) for c in excluded}
+    missing = [c for c in names if _kpi_header_key(c) not in lookup
+               and _kpi_header_key(c) not in excluded_keys]
+    if missing:
+        raise KPIValidationError('Kolom file tidak sesuai sheet tujuan. Kolom wajib belum ada: ' + ', '.join(missing))
+    # Hanya pengecualian eksplisit yang diberi placeholder kosong. Pemanggil
+    # menentukan apakah kolom tersebut dikosongkan (KPRO) atau dilewati (BIMA).
+    result = pd.DataFrame(index=frame.index)
+    for name in names:
+        key = _kpi_header_key(name)
+        result[name] = '' if key in excluded_keys else frame[lookup[key]]
+    if result.apply(lambda col: col.map(lambda v: pd.isna(v) or not str(v).strip())).all(axis=None):
+        raise KPIValidationError('Hasil pemetaan tidak memiliki data. Periksa file dan sheet tujuan.')
+    return result
+
+# [FITUR] Upload Data - halaman upload BIMA dan KPRO
 @flask_app.route('/upload')
 @login_required
 @role_required('admin', 'operator')
 def upload():
     return render_template("upload.html", user=session['user'])
 
+# [FITUR] Data Spreadsheet - melihat hasil pada sheet sumber upload
 @flask_app.route('/tabel')
 @login_required
 def tabel():
@@ -1909,7 +2231,7 @@ def tabel():
             df.drop(columns=cols_drop, inplace=True)
         nomor = [start_index + i + 1 for i in range(len(df))]
         df.insert(0, 'No', nomor)
-        data_html = df.to_html(classes='data', index=False, border=0, escape=False)
+        data_html = df.to_html(classes='data', index=False, border=0, escape=True)
         pagination = {
             'current_page': current_page, 'total_pages': total_pages,
             'total_rows': total_rows, 'per_page': per_page, 'start_index': start_index,
@@ -1922,90 +2244,71 @@ def tabel():
         search_query=search_query, total_all_rows=total_all_rows,
     )
 
+# [FITUR] Upload BIMA - filter data Excel dan penggantian area impor BIMA
 @flask_app.route('/filter', methods=['POST'])
 @login_required
 @role_required('admin', 'operator')
+@serialized_sheet_write('upload')
 def filter_data():
     kelas = request.form.get('kelas', '')
-    if kelas not in ALLOWED_KELAS:
-        flash("Jenis sheet tidak valid.", "error")
-        return redirect(url_for('upload'))
+    if kelas != '06':
+        return _upload_result('Filter BIMA hanya dapat memperbarui sheet BIMA.')
     file = request.files.get('file')
-    if not file:
-        flash("File tidak ditemukan.", "error")
-        return redirect(url_for('upload'))
+    writing = False
     try:
-        df = pd.read_excel(file)
+        df = _read_source_upload(file)
         req = ['SC Order No/Track ID/CSRM No', 'CRM Order Type', 'Status']
         if not all(c in df.columns for c in req):
-            flash("Kolom wajib tidak lengkap di file!", "error")
-            return redirect(url_for('upload'))
+            raise KPIValidationError('Kolom wajib BIMA belum lengkap: ' + ', '.join(c for c in req if c not in df.columns))
         filtered = df[
             df['SC Order No/Track ID/CSRM No'].astype(str).str.contains('WSA', case=False, na=False) &
             df['CRM Order Type'].isin(['CREATE', 'MIGRATE']) &
             (df['Status'] == 'WORKFAIL')
         ]
-        cleaned = prepare_dataframe_for_sheets(filtered)
+        if filtered.empty:
+            raise KPIValidationError('Tidak ada data yang memenuhi filter BIMA (WSA, CREATE/MIGRATE, WORKFAIL).')
+        cleaned = prepare_dataframe_for_sheets(filtered.copy())
         ws = get_worksheet(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
         all_data = ws.get_all_values()
         header_row = 1 if kelas == '06' else 2
         old_header = all_data[header_row - 1] if len(all_data) >= header_row else []
         max_col = gspread.utils.a1_to_rowcol('Z1')[1]
         safe_header = old_header[:max_col]
-        cleaned = cleaned[[c for c in safe_header if c in cleaned.columns]]
-        for c in safe_header:
-            if c not in cleaned.columns:
-                cleaned[c] = ''
-        cleaned = cleaned.reindex(columns=safe_header)
-        existing = len(all_data)
-        ws.batch_clear([f"A{header_row + 1}:Z{existing}"])
-        if not cleaned.empty:
-            ws.update(
-                values=cleaned.fillna('').astype(str).values.tolist(),
-                range_name=f"A{header_row + 1}",
-                value_input_option='USER_ENTERED',
-            )
-        invalidate_sheet_cache(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
+        source_keys = {_kpi_header_key(c) for c in cleaned.columns}
+        # Ekspor BIMA boleh tanpa no kode; jangan timpa isi/formula kolom tujuan itu.
+        preserved = tuple(i for i, name in enumerate(safe_header)
+                          if _kpi_header_key(name) == 'no kode' and 'no kode' not in source_keys)
+        cleaned = _align_source_upload(cleaned, safe_header,
+                                       excluded=[safe_header[i] for i in preserved])
+        writing = True
+        try:
+            replace_sheet_values(ws, cleaned.fillna('').astype(str).values.tolist(),
+                                 header_row + 1, len(safe_header), preserve_columns=preserved)
+        finally:
+            invalidate_sheet_cache(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
         audit('upload_filter_bima', sheet_name=SHEET_NAMES['upload'][kelas], new_value=f"{len(cleaned)} rows")
-        flash("Spreadsheet berhasil diupdate.", "success")
+        return _upload_result(f'Sheet BIMA berhasil diperbarui: {len(cleaned)} baris.', True, kelas)
+    except KPIValidationError as e:
+        return _upload_result(f'{e} Upload ditolak; data lama tidak diubah.')
     except Exception as e:
-        flash(f"Gagal memfilter: {e}", "error")
         traceback.print_exc()
-    return redirect(url_for('tabel', kelas=kelas))
+        message = ('Penyimpanan gagal atau belum dapat dipastikan. Periksa sheet sebelum mencoba kembali.'
+                   if writing else 'Gagal membaca file atau sheet tujuan. Data lama tidak diubah.')
+        return _upload_result(message, status=503)
 
+# [FITUR] Upload KPRO - penyesuaian kolom Excel dan penggantian area impor KPRO
 @flask_app.route('/hapus_kolom', methods=['POST'])
 @login_required
 @role_required('admin', 'operator')
+@serialized_sheet_write('upload')
 def hapus_kolom():
     kelas = request.form.get('kelas', '')
-    if kelas not in ALLOWED_KELAS:
-        flash("Jenis sheet tidak valid.", "error")
-        return redirect(url_for('upload'))
+    if kelas != '05':
+        return _upload_result('Filter KPRO hanya dapat memperbarui sheet KPRO.')
     file = request.files.get('file')
-    if not file:
-        flash("Tidak ada file.", "error")
-        return redirect(url_for('upload'))
-    fn = file.filename.lower()
+    writing = False
     try:
-        if fn.endswith('.xlsx'):
-            df = pd.read_excel(file, engine='openpyxl')
-        elif fn.endswith('.xls'):
-            file.seek(0)
-            first_bytes = file.read(2048).lower()
-            file.seek(0)
-            if b'<html' in first_bytes or b'<table' in first_bytes:
-                try:
-                    tables = pd.read_html(file)
-                    df = tables[0] if tables else pd.DataFrame()
-                except Exception:
-                    df = pd.read_excel(file, engine='xlrd')
-            else:
-                df = pd.read_excel(file, engine='xlrd')
-        elif fn.endswith('.csv'):
-            df = pd.read_csv(file)
-        else:
-            flash("Format tidak didukung.", "error")
-            return redirect(url_for('upload'))
+        df = _read_source_upload(file)
 
         cols_del = ['CRMORDERTYPE', 'REGIONAL LAMA', 'DISTRICT LAMA', 'DATEL LAMA']
         df.drop(columns=[c for c in cols_del if c in df.columns], inplace=True)
@@ -2013,40 +2316,25 @@ def hapus_kolom():
         sd = ws.get_all_values()
         full_header = (sd[1] if kelas in ['04', '05'] and len(sd) > 1 else (sd[0] if len(sd) > 0 else []))
         header_limited = full_header[:56]
-        seen = set(); safe_header = []
-        for c in header_limited:
-            if c not in seen:
-                safe_header.append(c); seen.add(c)
-            else:
-                safe_header.append(None)
-        aligned = []
-        for _, row in df.iterrows():
-            ar = []
-            for c in safe_header:
-                if c is None: ar.append('')
-                elif c in df.columns:
-                    v = row[c]
-                    ar.append('' if pd.isna(v) else str(v))
-                else: ar.append('')
-            aligned.append(ar)
-        existing = len(sd)
-        if existing > 2:
-            ws.batch_clear([f"A3:BD{existing + 100}"])
-        if aligned:
-            ws.update(values=aligned, range_name='A3', value_input_option='USER_ENTERED')
-        invalidate_sheet_cache(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
+        aligned = _align_source_upload(df, header_limited, excluded=cols_del).fillna('').astype(str).values.tolist()
+        writing = True
+        try:
+            replace_sheet_values(ws, aligned, 2 if kelas == '06' else 3,
+                                 len(header_limited))
+        finally:
+            invalidate_sheet_cache(SPREADSHEET_IDS['upload'], SHEET_NAMES['upload'][kelas])
         audit('upload_hapus_kolom', sheet_name=SHEET_NAMES['upload'][kelas], new_value=f"{len(aligned)} rows")
-        flash("Data berhasil diupdate.", "success")
+        return _upload_result(f'Sheet KPRO berhasil diperbarui: {len(aligned)} baris.', True, kelas)
+    except KPIValidationError as e:
+        return _upload_result(f'{e} Upload ditolak; data lama tidak diubah.')
     except Exception as e:
-        flash(f"Gagal: {e}", "error")
         traceback.print_exc()
-    return redirect(url_for('tabel', kelas=kelas))
+        message = ('Penyimpanan gagal atau belum dapat dipastikan. Periksa sheet sebelum mencoba kembali.'
+                   if writing else 'Gagal membaca file atau sheet tujuan. Data lama tidak diubah.')
+        return _upload_result(message, status=503)
 
 # =====================================================================
-# =====================================================================
-# ROUTES - ADMIN USER MANAGEMENT
-# =====================================================================
-# ROUTES - USER ONLINE (heartbeat + halaman online)
+# [FITUR] User Online - pemetaan URL ke nama halaman aktivitas
 # =====================================================================
 
 # Mapping path → nama halaman yang tampil
@@ -2070,21 +2358,33 @@ PAGE_NAMES = {
 
 def _page_name(path):
     """Konversi path URL ke nama halaman yang mudah dibaca."""
-    for key, name in PAGE_NAMES.items():
-        if path.startswith(key):
-            return name
+    if has_request_context() and request.script_root and path.startswith(request.script_root + '/'):
+        path = path[len(request.script_root):]
+    for key in sorted(PAGE_NAMES, key=len, reverse=True):
+        if path == key or path.startswith(key + '/'):
+            return PAGE_NAMES[key]
     return path or 'FilterIN'
 
 
 # =====================================================================
-# ROUTES - CACHE MANAGEMENT
+# [PENDUKUNG] Cache - endpoint status dan refresh manual
 # =====================================================================
 
 @flask_app.route('/api/cache_status')
 @api_login_required
+@api_role_required('admin', 'operator')
 def api_cache_status():
     """Status cache — berapa sheet yang di-cache dan kapan terakhir fetch."""
     try:
+        refresh = _read_prefetch_status()
+        scheduler = _cache_scheduler
+        job = scheduler.get_job('prefetch_sheets') if scheduler and scheduler.running else None
+        automatic = {
+            'running': bool(job),
+            'interval_seconds': PREFETCH_INTERVAL_SECONDS,
+            'next_run_at': job.next_run_time.isoformat() if job and job.next_run_time else None,
+            'server_time': datetime.now().astimezone().isoformat(timespec='milliseconds'),
+        }
         # Bangun map cache_key → nama sheet dari PREFETCH_SHEETS saja
         sheet_map   = {}
         target_keys = []
@@ -2097,7 +2397,7 @@ def api_cache_status():
                 target_keys.append(ck)
 
         if not target_keys:
-            return jsonify({'cache': [], 'total': 0})
+            return jsonify(cache=[], total=0, refresh=refresh, automatic=automatic)
 
         # Ambil hanya cache untuk sheet yang di-prefetch
         placeholders = ','.join(['%s'] * len(target_keys))
@@ -2124,7 +2424,7 @@ def api_cache_status():
                 'row_count':   r['row_count'],
                 'fetched_at':  r['fetched_at'].strftime('%d/%m/%Y %H:%M:%S') if r['fetched_at'] else '—',
                 'age_seconds': r['age_seconds'],
-                'status':      'fresh' if r['age_seconds'] < 300 else 'stale',
+                'status':      'fresh' if r['age_seconds'] < SHEET_CACHE_TTL else 'stale',
             })
 
         # Sheet yang belum pernah di-cache
@@ -2138,28 +2438,38 @@ def api_cache_status():
                     'status':      'missing',
                 })
 
-        return jsonify({'cache': result, 'total': len(result)})
-    except Exception as e:
-        return jsonify({'cache': [], 'error': str(e)})
+        return jsonify(cache=result, total=len(result), refresh=refresh, automatic=automatic)
+    except Exception:
+        flask_app.logger.exception('Status pembaruan cache tidak dapat dibaca')
+        return jsonify(error='Status pembaruan belum dapat diperiksa.'), 503
 
 
 @flask_app.route('/api/cache_refresh', methods=['POST'])
-@login_required
-@role_required('admin')
+@api_login_required
+@api_role_required('admin')
 def api_cache_refresh():
     """Force refresh semua cache — admin only."""
     try:
-        invalidate_sheet_cache()  # hapus cache lama
+        previous = _read_prefetch_status()
+        if previous and previous.get('state') == 'running':
+            return jsonify(status='accepted', run_id=previous['run_id'],
+                           previous_run_id=None, message='Pembaruan masih berjalan.')
+        # Pertahankan cache cadangan sampai pembacaan sumber berhasil.
         # Jalankan prefetch job di background thread
         import threading
-        t = threading.Thread(target=_prefetch_job, daemon=True)
+        t = threading.Thread(target=_prefetch_job, kwargs={'trigger': 'manual'}, daemon=True)
         t.start()
         audit('cache_refresh', new_value='manual refresh by admin')
-        return jsonify({'status': 'success', 'message': 'Cache refresh dimulai.'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify(status='accepted', run_id=None,
+                       previous_run_id=previous.get('run_id') if previous else None,
+                       message='Permintaan pembaruan diterima; menunggu proses dimulai.')
+    except Exception:
+        flask_app.logger.exception('Permintaan pembaruan cache gagal')
+        return jsonify(status='error', message='Pembaruan belum dapat dimulai. Coba kembali.'), 503
 
 
+# [FITUR] User Online - heartbeat, jumlah pengguna aktif, dan halaman daftar online
+# Tampilan: templates/online_users.html | Pengirim heartbeat: templates/base.html
 @flask_app.route('/heartbeat', methods=['POST'])
 @api_login_required
 def heartbeat():
@@ -2274,6 +2584,8 @@ def online_users():
 
 # =====================================================================
 
+# [FITUR] Manajemen Pengguna - daftar, tambah, edit, reset password, dan hapus akun
+# Tampilan: templates/admin_users.html | Role: Admin | MySQL: users
 @flask_app.route('/admin/users')
 @login_required
 @role_required('admin')
@@ -2353,6 +2665,10 @@ def admin_edit_user():
 
     try:
         with db_cursor() as (conn, cur):
+            cur.execute('SELECT username FROM users WHERE id=%s FOR UPDATE', (user_id,))
+            if not cur.fetchone():
+                flash('User tidak ditemukan.', 'error')
+                return redirect(url_for('admin_users'))
             cur.execute(
                 "UPDATE users SET role=%s WHERE id=%s",
                 (new_role, user_id)
@@ -2381,6 +2697,10 @@ def admin_reset_password():
 
     try:
         with db_cursor() as (conn, cur):
+            cur.execute('SELECT username FROM users WHERE id=%s FOR UPDATE', (user_id,))
+            if not cur.fetchone():
+                flash('User tidak ditemukan.', 'error')
+                return redirect(url_for('admin_users'))
             cur.execute(
                 "UPDATE users SET password=%s WHERE id=%s",
                 (generate_password_hash(new_password), user_id)
@@ -2415,6 +2735,8 @@ def admin_delete_user():
                 flash('User tidak ditemukan.', 'error')
                 return redirect(url_for('admin_users'))
             cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+            cur.execute('DELETE FROM user_sessions WHERE username=%s', (row['username'],))
+            cur.execute('DELETE FROM edit_locks WHERE locked_by=%s', (row['username'],))
         audit('admin_delete_user', new_value=f'{row["username"]} ({row["nama"]})')
         flash(f'User @{row["username"]} berhasil dihapus.', 'success')
     except Exception as e:
@@ -2423,7 +2745,7 @@ def admin_delete_user():
 
 
 # =====================================================================
-# ROUTES - AUDIT LOG (admin only)
+# [FITUR] Audit Log - halaman pencarian/filter dan hapus log (Admin)
 # =====================================================================
 @flask_app.route('/audit_log')
 @login_required
@@ -2464,7 +2786,7 @@ def audit_log_view():
     seen = {}
     for row in raw_rows:
         ts_str = row['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if row['timestamp'] else ''
-        key = (ts_str, row.get('username',''), row.get('action',''), row.get('row_key',''))
+        key = (ts_str, row.get('username',''), row.get('action',''), row.get('sheet_name',''), row.get('row_key',''))
         if key not in seen:
             seen[key] = len(groups)
             groups.append({
@@ -2494,11 +2816,15 @@ def audit_log_view():
 @role_required('admin')
 def audit_log_clear():
     """Hapus audit log. keep_days=0 → hapus semua, keep_days=N → simpan N hari terakhir."""
-    keep_days = request.form.get('keep_days', '0')
+    keep_days = request.form.get('keep_days', '')
     try:
         keep_days = int(keep_days)
     except ValueError:
-        keep_days = 0
+        flash('Jumlah hari tidak valid; log tidak dihapus.', 'error')
+        return redirect(url_for('audit_log_view'))
+    if keep_days < 0:
+        flash('Jumlah hari tidak boleh negatif.', 'error')
+        return redirect(url_for('audit_log_view'))
     try:
         with db_cursor() as (conn, cur):
             if keep_days > 0:
@@ -2516,7 +2842,7 @@ def audit_log_clear():
     return redirect(url_for('audit_log_view'))
 
 # =====================================================================
-# HELPER PIVOT — hitung cross-tab dari DataFrame
+# [PENDUKUNG] Recap Report - helper pivot/cross-tab dari DataFrame
 # =====================================================================
 def _pivot_2d(df, row_col, col_col):
     """
@@ -2540,32 +2866,196 @@ def _pivot_2d(df, row_col, col_col):
  
  
 # =====================================================================
-# ROUTE /recap — Recap Report lengkap
-# =====================================================================
-# =====================================================================
-# ROUTES - KPI INDIHOME (TTI / FFG / TTR FFG)
+# [FITUR] KPI IndiHome - konfigurasi TTI, FFG, TTR FFG dan validasi upload
 # =====================================================================
 
 KPI_TYPES = {
     'tti': {
         'label':       'TTI (Ps Indihome)',
         'sheet_upload': 'tti_upload',
+        'import_start_col': 1,
         'icon':        'fa-chart-line',
         'color':       '#2563eb',
     },
     'ffg': {
         'label':       'FFG (Not Comply)',
         'sheet_upload': 'ffg_upload',
+        'import_start_col': 2,
         'icon':        'fa-circle-exclamation',
         'color':       '#dc2626',
     },
     'ttr': {
         'label':       'TTR FFG (Jml Ggn WSA)',
         'sheet_upload': 'ttr_upload',
+        'import_start_col': 2,
         'icon':        'fa-wrench',
         'color':       '#d97706',
     },
 }
+
+
+class KPIValidationError(ValueError):
+    """File atau header acuan tidak memenuhi struktur unggahan KPI."""
+
+
+class _KPIHTMLTableParser(HTMLParser):
+    """Baca tabel ekspor sebagai teks saja, tanpa browser atau akses resource luar."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.rows = []
+        self.structure = []
+        self.table_count = 0
+        self.row = None
+        self.cell = None
+
+    def handle_starttag(self, tag, attrs):
+        allowed = {'html', 'head', 'body', 'title', 'meta', 'style', 'table',
+                   'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'br',
+                   'span', 'b', 'strong', 'i', 'em', 'font'}
+        if tag not in allowed or any(name.startswith('on') for name, _ in attrs):
+            raise KPIValidationError('Ekspor HTML mengandung elemen yang tidak didukung.')
+        if any(name in ('rowspan', 'colspan') and value != '1' for name, value in attrs):
+            raise KPIValidationError('Tabel ekspor tidak boleh memiliki sel gabungan.')
+        if tag == 'table':
+            self.table_count += 1
+            if self.table_count != 1 or self.structure:
+                raise KPIValidationError('Ekspor harus berisi tepat satu tabel, tanpa tabel bersarang.')
+            self.structure.append(tag)
+        elif tag == 'tr':
+            if self.structure != ['table']:
+                raise KPIValidationError('Struktur baris tabel ekspor tidak valid.')
+            self.structure.append(tag)
+            self.row = []
+        elif tag in ('td', 'th'):
+            if self.structure != ['table', 'tr']:
+                raise KPIValidationError('Struktur sel tabel ekspor tidak valid.')
+            self.structure.append(tag)
+            self.cell = []
+        elif tag == 'br' and self.cell is not None:
+            self.cell.append('\n')
+
+    def handle_endtag(self, tag):
+        if tag not in ('table', 'tr', 'td', 'th'):
+            return
+        if not self.structure or self.structure[-1] != tag:
+            raise KPIValidationError('Tabel ekspor rusak atau tidak lengkap.')
+        self.structure.pop()
+        if tag in ('td', 'th'):
+            self.row.append(''.join(self.cell).strip())
+            self.cell = None
+        elif tag == 'tr':
+            self.rows.append(self.row)
+            self.row = None
+
+    def handle_data(self, data):
+        if self.cell is not None:
+            self.cell.append(data)
+
+    def handle_decl(self, decl):
+        if not decl.lower().startswith('doctype html') or '[' in decl:
+            raise KPIValidationError('Deklarasi dokumen ekspor tidak didukung.')
+
+    def handle_pi(self, data):
+        raise KPIValidationError('Format XML tidak didukung. Simpan ulang sebagai .xlsx.')
+
+
+def _read_excel_upload(file, extension):
+    head = file.read(512).decode('utf-8-sig', errors='replace').lstrip().lower()
+    file.seek(0)
+    if head.startswith('<'):
+        if extension != 'xls':
+            raise KPIValidationError('Ekspor tabel HTML harus memakai .xls, bukan .xlsx.')
+        try:
+            content = file.read().decode('utf-8-sig')
+        except UnicodeDecodeError as exc:
+            raise KPIValidationError('Encoding ekspor tidak didukung. Simpan ulang sebagai .xlsx.') from exc
+        parser = _KPIHTMLTableParser()
+        parser.feed(content)
+        parser.close()
+        # Ekspor asli portal berhenti pada </tbody>, tanpa </table>.
+        # Toleransi hanya penutup tabel luar yang hilang: semua sel/baris harus
+        # sudah tertutup dan dokumen benar-benar berakhir setelah tbody.
+        if parser.structure == ['table'] and content.rstrip().lower().endswith('</tbody>'):
+            parser.handle_endtag('table')
+        if parser.table_count != 1 or parser.structure or not parser.rows:
+            raise KPIValidationError('Ekspor harus berisi satu tabel lengkap dengan header dan data.')
+        width = len(parser.rows[0])
+        if not width or any(len(row) != width for row in parser.rows):
+            raise KPIValidationError('Jumlah kolom antarbaris tabel ekspor tidak sama.')
+        # Jangan inferensi angka/tanggal: ID berawalan nol dan teks NA harus utuh.
+        return pd.DataFrame(parser.rows, dtype=object)
+    engine = 'xlrd' if extension == 'xls' else 'openpyxl'
+    return pd.read_excel(file, engine=engine, header=None, dtype=object, keep_default_na=False)
+
+
+def _kpi_header_key(value):
+    # Perbedaan huruf besar dan spasi tidak mengubah identitas kolom.
+    return re.sub(r'\s+', ' ', str(value).strip()).casefold()
+
+
+def _validate_kpi_headers(headers, source):
+    if not headers or len(headers) > 33:
+        raise KPIValidationError(f'{source} harus memiliki 1–33 kolom (A–AG).')
+    cleaned, seen = [], set()
+    for pos, value in enumerate(headers, start=1):
+        if not isinstance(value, str) or not value.strip():
+            raise KPIValidationError(f'{source}: nama kolom ke-{pos} kosong atau bukan teks.')
+        name = value.strip()
+        key = _kpi_header_key(name)
+        if key in seen:
+            raise KPIValidationError(f'{source}: nama kolom duplikat "{name}".')
+        seen.add(key)
+        cleaned.append(name)
+    return cleaned
+
+
+def _prepare_kpi_upload(raw):
+    """Baca header asli, sebelum pandas sempat mengganti header kosong/duplikat."""
+    if raw.empty:
+        raise KPIValidationError('File Excel kosong atau tidak memiliki header.')
+    headers = _validate_kpi_headers(raw.iloc[0].tolist(), 'Header file Excel')
+    data = raw.iloc[1:].copy()
+    data.columns = headers
+    blank = data.apply(lambda col: col.map(
+        lambda value: pd.isna(value) or (isinstance(value, str) and not value.strip())))
+    data = data.loc[~blank.all(axis=1)].reset_index(drop=True)
+    if data.empty:
+        raise KPIValidationError('File Excel hanya berisi header atau tidak memiliki baris data.')
+    return data
+
+
+def _kpi_import_headers(sheet_headers, info):
+    """Header area impor saja; XCEK dan kolom di luar area bukan isi file Excel."""
+    start_col = info['import_start_col']
+    if start_col == 2 and (
+            not sheet_headers or _kpi_header_key(sheet_headers[0]) != 'xcek'):
+        raise KPIValidationError(
+            f'Header acuan {info["label"]}: kolom A harus XCEK. '
+            'Struktur sheet berubah; periksa sheet tujuan sebelum upload.')
+    # Maksimal 33 kolom sumber: TTI A–AG, FFG/TTR B–AH.
+    # Jangan memasukkan header kolom pendukung ke kontrak file upload.
+    return sheet_headers[start_col - 1:start_col - 1 + 33]
+
+
+def _align_kpi_upload(data, expected_headers, label):
+    """Sheet tujuan adalah acuan struktur; jangan mempercayai header dari upload."""
+    expected = _validate_kpi_headers(expected_headers, f'Header acuan {label}')
+    actual_by_key = {_kpi_header_key(name): name for name in data.columns}
+    expected_keys = {_kpi_header_key(name) for name in expected}
+    missing = [name for name in expected if _kpi_header_key(name) not in actual_by_key]
+    extra = [name for name in data.columns if _kpi_header_key(name) not in expected_keys]
+    if missing or extra:
+        details = []
+        if missing:
+            details.append('Kolom wajib belum ada: ' + ', '.join(missing))
+        if extra:
+            details.append('Kolom tidak dikenal: ' + ', '.join(extra))
+        raise KPIValidationError(f'Format kolom tidak sesuai untuk {label}. ' + '. '.join(details))
+    aligned = data[[actual_by_key[_kpi_header_key(name)] for name in expected]].copy()
+    aligned.columns = expected
+    return aligned
+
 
 def _get_kpi_last_upload(kpi_type):
     """Ambil info terakhir upload KPI dari audit_log."""
@@ -2591,6 +3081,7 @@ def _get_kpi_last_upload(kpi_type):
     return None
 
 
+# [FITUR] KPI IndiHome - halaman indeks dan detail hasil
 @flask_app.route('/kpi')
 @login_required
 def kpi_index():
@@ -2639,11 +3130,13 @@ def kpi_detail(kpi_type):
     )
 
 
+# [FITUR] KPI IndiHome - endpoint upload Excel dan penggantian area impor
 @flask_app.route('/kpi/<kpi_type>/upload', methods=['POST'])
 @login_required
 @role_required('admin', 'operator')
+@serialized_sheet_write('kpi')
 def kpi_upload(kpi_type):
-    """Upload Excel KPI — replace all data di sheet Google Sheets."""
+    """Ganti area data impor KPI, tanpa menulis header atau kolom pendukung."""
     if kpi_type not in KPI_TYPES:
         flash('Jenis KPI tidak valid.', 'error')
         return redirect(url_for('kpi_index'))
@@ -2664,37 +3157,19 @@ def kpi_upload(kpi_type):
         return redirect(url_for('kpi_detail', kpi_type=kpi_type))
 
     try:
-        # ── Pre-check: deteksi file HTML/XML yang di-rename .xls
-        # (umum dari export sistem web eksternal seperti BIMA/portal Telkom)
-        head = f.read(512).lstrip().lower()
-        f.seek(0)  # reset stream biar read_excel bisa baca ulang
-        if head.startswith((b'<html', b'<!doctype', b'<style', b'<table', b'<?xml')):
-            flash(
-                '❌ File terdeteksi bukan .xls. Silakan buka di Excel lalu '
-                'Save As → "Excel Workbook (*.xlsx)".',
-                'error'
-            )
-            return redirect(url_for('kpi_detail', kpi_type=kpi_type))
+        # Header dibaca sebagai data agar nama kosong/duplikat tidak disamarkan pandas.
+        raw = _read_excel_upload(f, ext)
+        df = _prepare_kpi_upload(raw)
 
-        # Baca Excel — kolom A2 sampai AG (index 0-32)
-        engine = 'xlrd' if ext == 'xls' else 'openpyxl'
-        df = pd.read_excel(f, engine=engine, header=0)
-
-        # Ambil hanya kolom A-AG (max 33 kolom)
-        df = df.iloc[:, :33]
-
-        # Hapus baris yang semua kosong
-        df = df.dropna(how='all')
-
-        if df.empty:
-            flash('File kosong atau tidak ada data yang valid.', 'error')
-            return redirect(url_for('kpi_detail', kpi_type=kpi_type))
+        # Baca header langsung dari sumber, bukan cache atau file yang akan diupload.
+        ws = get_worksheet(SPREADSHEET_IDS['kpi'], sheet_name)
+        expected_headers = _kpi_import_headers(ws.row_values(1), info)
+        df = _align_kpi_upload(df, expected_headers, info['label'])
 
         total_excel = len(df)
 
         # Siapkan data untuk Google Sheets
-        # Baris 1 = header (nama kolom dari Excel)
-        header_row = [str(c).strip() if str(c) != 'nan' else '' for c in df.columns.tolist()]
+        # Baris pertama Excel hanya untuk validasi; header sheet tetap dipertahankan.
         data_rows  = []
         for _, row in df.iterrows():
             r = []
@@ -2707,16 +3182,13 @@ def kpi_upload(kpi_type):
                     r.append(str(v) if not isinstance(v, (int, float)) else v)
             data_rows.append(r)
 
-        all_rows = [header_row] + data_rows
-
-        # Tulis ke Google Sheets — replace all
-        ws = get_worksheet(SPREADSHEET_IDS['kpi'], sheet_name)
-
-        # Clear semua data mulai baris 1
-        ws.clear()
-
-        # Batch update
-        ws.update('A1', all_rows, value_input_option='USER_ENTERED')
+        try:
+            # Data baru dan pengosongan sisa data lama dalam satu update.
+            # Tidak menyentuh baris 1, XCEK, atau kolom di luar area impor.
+            replace_sheet_values(ws, data_rows, 2, len(df.columns),
+                                 start_col=info['import_start_col'])
+        finally:
+            invalidate_sheet_cache(SPREADSHEET_IDS['kpi'], sheet_name)
 
         # Catat ke audit_log
         audit(
@@ -2731,6 +3203,8 @@ def kpi_upload(kpi_type):
             'success'
         )
 
+    except KPIValidationError as e:
+        flash(f'{e} Upload ditolak; data lama tidak diubah.', 'error')
     except Exception as e:
         msg = str(e).lower()
         if 'expected bof' in msg or 'unsupported format' in msg or 'corrupt' in msg:
@@ -2745,6 +3219,9 @@ def kpi_upload(kpi_type):
     return redirect(url_for('kpi_detail', kpi_type=kpi_type))
 
 
+# =====================================================================
+# [FITUR] Recap Report - penyusunan ringkasan laporan dan tampilan recap.html
+# =====================================================================
 @flask_app.route('/recap')
 @login_required
 def recap():
@@ -2760,10 +3237,7 @@ def recap():
     try:
         all_data = get_sheet_values(SPREADSHEET_IDS['kendala'],
                                     SHEET_NAMES['kendala']['kendalamaster'])
-        header   = [str(h).strip() for h in all_data[1]]
-        df_raw   = pd.DataFrame(all_data[2:], columns=header)
-        df_raw.columns = df_raw.columns.str.strip()
-        df       = hitung_rumus_otomatis(df_raw.copy())
+        df = hitung_rumus_otomatis(_sheet_frame(all_data), keep_dates=True)
     except Exception as e:
         flash(f'Gagal ambil data Kendala Master: {e}', 'error')
         df = pd.DataFrame()
@@ -2866,7 +3340,7 @@ def recap():
                 'reorder'     : get_orders(df_wil, ['RE-ORDER', 'REORDER']),
                 'done_tati'   : get_orders(df_wil, ['DONE TATI']),
                 'ijin_tsel'   : get_orders(df_wil, ['IJIN TSEL', 'REQ IJIN TSEL']),
-                'validasi_tsel': get_orders(df_wil, ['VALIDASI ADMINISTRASI TSEL', 'VERIVIKASI UNSC']),
+                'validasi_tsel': get_orders(df_wil, ['VALIDASI ADMINISTRASI TSEL', 'VERIFIKASI UNSC', 'VERIVIKASI UNSC']),
             }
  
     # ------------------------------------------------------------------
@@ -2875,7 +3349,7 @@ def recap():
     MONTHS     = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des']
     tati_year  = str(now.year)
     tati_month_name = now.strftime('%B')
-    tati_days  = list(range(1, 32))
+    tati_days  = list(range(1, calendar.monthrange(now.year, now.month)[1] + 1))
     tati_bulanan       = {}
     tati_bulanan_total = {}
     tati_harian        = {}
@@ -2888,8 +3362,9 @@ def recap():
         if len(tati_data) >= 10:
             # Baris header di index 2 (baris ke-3), data dari index 3
             for row in tati_data[3:10]:
-                if not row or not row[1]: continue
+                if len(row) < 2 or not row[1]: continue
                 datel = str(row[1]).strip().upper()
+                if 'TOTAL' in datel or datel in ('JUMLAH', 'GRAND'): continue
                 tati_bulanan[datel] = {}
                 total = 0
                 for i, m in enumerate(MONTHS):
@@ -2911,10 +3386,10 @@ def recap():
                 # Kolom R = index 17 (0-based)
                 if len(row) <= 17: continue
                 datel = str(row[17]).strip().upper()
-                if not datel: continue
+                if not datel or 'TOTAL' in datel or datel in ('JUMLAH', 'GRAND'): continue
                 tati_harian[datel] = {}
                 total = 0
-                for day in range(1, 32):
+                for day in tati_days:
                     col_idx = 17 + day  # R=17, hari 1 = index 18
                     val = 0
                     if col_idx < len(row):
@@ -2973,14 +3448,14 @@ def recap():
 
 
 # =====================================================================
-# ROUTES - PLACEHOLDERS
+# [FITUR] Verifikasi ODP - placeholder tampilan, belum memuat data operasional
 # =====================================================================
 @flask_app.route('/verifikasi_odp_full')
 @login_required
 def verifikasi_odp_full(): return render_template('verifikasi_odp_full.html', header=[], data=[])
 
 # ════════════════════════════════════════════════════════════
-# WATCHLIST — Opsi 3
+# [FITUR] Watchlist - daftar pantauan, tambah, hapus, dan pembersihan
 # ════════════════════════════════════════════════════════════
  
 @flask_app.route('/api/watchlist', methods=['GET'])
@@ -3102,26 +3577,27 @@ def watchlist_remove():
  
 @flask_app.route('/api/watchlist/auto_clean', methods=['POST'])
 @api_login_required
+@api_role_required('admin', 'operator')
 def watchlist_auto_clean():
     """Hapus watchlist untuk order yang sudah CLOSE di kendalamaster."""
     try:
-        data = _read_mysql_cache(
+        data = get_sheet_values(
             SPREADSHEET_IDS['kendala'],
-            SHEET_NAMES['kendala']['kendalamaster']
+            SHEET_NAMES['kendala']['kendalamaster'], force_refresh=True
         )
         if not data or len(data) < 2:
             return jsonify(status='ok', message='Tidak ada data cache', removed=0)
  
-        headers = [h.strip().upper() for h in data[0]]
+        headers = [h.strip().upper() for h in data[1]]
         try:
             idx_order  = headers.index('ORDER_ID')
-            idx_status = headers.index('STATUS')
+            idx_status = headers.index('STATUS' if 'STATUS' in headers else 'STATUS_RESUME')
         except ValueError:
             return jsonify(status='error', message='Kolom ORDER_ID/STATUS tidak ditemukan'), 500
  
         closed_ids = [
-            row[idx_order] for row in data[1:]
-            if len(row) > idx_status and
+            row[idx_order] for row in data[2:]
+            if len(row) > max(idx_status, idx_order) and
                str(row[idx_status]).strip().upper() in ('CLOSE', 'CLOSED', 'SELESAI')
         ]
  
@@ -3136,13 +3612,15 @@ def watchlist_auto_clean():
             )
             removed = cur.rowcount
  
+        if removed:
+            audit('watchlist_auto_clean', new_value=f'{removed} flag dihapus (WO CLOSE)')
         return jsonify(status='ok', message=f'{removed} flag dihapus (WO sudah CLOSE)', removed=removed)
     except Exception as e:
         return jsonify(status='error', message=str(e)), 500
  
  
 # ════════════════════════════════════════════════════════════
-# ANNOUNCEMENT BOARD — Opsi 4
+# [FITUR] Pengumuman - baca, tambah, dan hapus pengumuman
 # ════════════════════════════════════════════════════════════
  
 @flask_app.route('/api/announcements', methods=['GET'])
@@ -3174,7 +3652,7 @@ def announcements_get():
  
 @flask_app.route('/api/announcements/add', methods=['POST'])
 @api_login_required
-@role_required('admin')
+@api_role_required('admin')
 def announcements_add():
     """Tambah pengumuman baru (admin only)."""
     data    = request.get_json() or {}
@@ -3214,7 +3692,7 @@ def announcements_add():
  
 @flask_app.route('/api/announcements/delete', methods=['POST'])
 @api_login_required
-@role_required('admin')
+@api_role_required('admin')
 def announcements_delete():
     """Hapus pengumuman (admin only)."""
     data = request.get_json() or {}
@@ -3232,13 +3710,16 @@ def announcements_delete():
 
 
 # =====================================================================
-# HEALTH
+# [PENDUKUNG] Health Check - endpoint pemeriksaan respons aplikasi
 # =====================================================================
 @flask_app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'service': 'FilterIN', 'time': datetime.now().isoformat()})
 
 # Exempt webhook-style endpoints from CSRF if needed (none currently)
+
+if os.environ.get('FILTERIN_SCHEDULER_ENABLED', '1') == '1':
+    _threading.Thread(target=_deferred_start, daemon=True).start()
 
 if __name__ == '__main__':
     flask_app.run(host='0.0.0.0', port=5000, debug=False)

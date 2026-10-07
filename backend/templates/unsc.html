@@ -87,6 +87,7 @@
 </style>
 {% endblock %}
 
+{# [FITUR] UNSC — route unsc. #}
 {% block content %}
 <div class="main-content">
     <h1 style="color:var(--text,#1e293b);"><i class="fa-solid fa-file-circle-question"></i> DB UNSC (END STATE)</h1>
@@ -100,7 +101,7 @@
     </div>
     {% endif %}
 
-    <!-- FILTER -->
+    {# [BAGIAN] Filter Pencarian #}
     <div class="filter-card" style="background:#fff; padding:20px; margin-bottom:20px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05); border:1px solid #ddd;">
         <h3 style="font-size:15px; margin:0 0 12px 0; color:var(--text,#2c3e50);"><i class="fas fa-filter"></i> Filter Data UNSC</h3>
         <form method="GET" action="{{ url_for('unsc') }}" style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end;">
@@ -182,8 +183,9 @@
     </div>
     {% endif %}
 
-    <!-- TABEL -->
-    <form action="{{ url_for('update_unsc') }}" method="POST">
+    {# [BAGIAN] Tabel UNSC — edit massal dikirim ke update_unsc. #}
+    <form action="{{ url_for('update_unsc') }}" method="POST" data-preserve-draft>
+        <div data-save-notice hidden role="status" style="padding:12px; border:1px solid #d97706; margin-bottom:10px;"></div>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="table-container">
             {% if error %}
@@ -217,15 +219,18 @@
                         </thead>
                         <tbody>
                             {% for row in data %}
-                            <tr>
-                                {% set row_number = loop.index + pagination.start_index + 2 %}
-                                <td style="text-align:center; font-weight:bold;">{{ loop.index + pagination.start_index }}</td>
+                            {% set row_number = sheet_rows[loop.index0] %}
+                            <tr data-row-num="{{ row_number }}">
+                                <td style="text-align:center; font-weight:bold;">{{ loop.index + pagination.start_index }}
+                                    <input type="hidden" name="__snapshot__[{{ row_number }}]" value="{{ row_tokens[loop.index0] }}">
+                                </td>
                                 {% for i in range(header|length) %}
                                     {% set ch = header[i] %}
                                     <td class="col-c-{{ i }}" title="{{ row[i] }}" data-col="{{ ch }}">
                                         {% if 'STATUS' in ch %}
                                             <select name="{{ ch }}[{{ row_number }}]" class="feedback-select"
                                                     onchange="updateColor(this); handleInputChange(this);">
+                                                {% if row[i] not in unsc_status_options %}<option value="{{ row[i] }}" selected>{{ row[i] or '(kosong)' }}</option>{% endif %}
                                                 {% for opt in unsc_status_options %}
                                                     <option value="{{ opt }}" {% if opt == row[i] %}selected{% endif %}>{{ opt }}</option>
                                                 {% endfor %}
@@ -233,6 +238,7 @@
                                         {% elif 'VALIDASI' in ch %}
                                             <select name="{{ ch }}[{{ row_number }}]" class="feedback-select"
                                                     onchange="updateColor(this); handleInputChange(this);">
+                                                {% if row[i] not in unsc_validasi_options %}<option value="{{ row[i] }}" selected>{{ row[i] or '(kosong)' }}</option>{% endif %}
                                                 {% for opt in unsc_validasi_options %}
                                                     <option value="{{ opt }}" {% if opt == row[i] %}selected{% endif %}>{{ opt }}</option>
                                                 {% endfor %}
@@ -266,7 +272,7 @@
         {% endif %}
     </form>
 
-    <!-- PAGINATION -->
+    {# [BAGIAN] Pagination #}
     {% if pagination and pagination.total_rows > 0 %}
     <div class="pagination-container" style="margin-top:16px;">
         <div class="pagination-info" style="color:var(--text-muted,#555);">
@@ -333,12 +339,23 @@ if (tc) {
     tc.addEventListener('focusout', () => { isEditing = false; });
     tc.addEventListener('click', e => { if (e.target.tagName==='SELECT') isEditing = true; });
 }
+// [BAGIAN] Pembaruan Tabel — GET /unsc_data; pertahankan edit yang belum disimpan.
 function fetchUpdates() {
-    if (isEditing || document.querySelector('.is-dirty')) return;
+    if (isEditing || document.querySelector('.is-dirty, form[data-saving="true"]')) return;
     const p = new URLSearchParams(window.location.search);
     fetch('/unsc_data?' + p.toString())
         .then(r => r.json())
-        .then(res => { if (res.data) updateTableRows(res.data); })
+        .then(res => {
+            if (isEditing || document.querySelector('.is-dirty, form[data-saving="true"]')) return;
+            if (!res.data || !res.sheet_rows) return;
+            const rows = document.querySelectorAll('.editable-table tbody tr');
+            if (rows.length !== res.data.length || Array.from(rows).some((row, i) =>
+                Number(row.dataset.rowNum) !== res.sheet_rows[i] ||
+                Array.from(row.querySelectorAll('td[data-col]')).some((cell, c) => {
+                    const input = cell.querySelector('select');
+                    return (input ? input.value : cell.textContent.trim()) !== String(res.data[i][c] ?? '');
+                }))) location.reload();
+        })
         .catch(() => {});
 }
 function updateTableRows(newData) {

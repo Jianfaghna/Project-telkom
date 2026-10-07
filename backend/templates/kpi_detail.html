@@ -276,6 +276,7 @@
 </style>
 {% endblock %}
 
+{# [FITUR] KPI IndiHome — hasil dan upload, route kpi_detail. #}
 {% block content %}
 <div class="kpi-detail-wrap">
 
@@ -321,7 +322,7 @@
         {% endif %}
     </div>
 
-    <!-- Upload form — hanya admin & operator -->
+    {# [BAGIAN] Upload KPI — POST ke kpi_upload; Admin/Operator. #}
     {% if user_role in ['admin', 'operator'] %}
     <div class="kpi-upload-card">
         <h2>
@@ -354,8 +355,15 @@
 
             <div class="kpi-replace-warn">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <span>Data lama di sheet <strong>"{{ SHEET_NAMES_KPI[kpi_type] }}"</strong>
-                akan <strong>dihapus semua</strong> dan diganti dengan data dari file baru.</span>
+                <span>Data impor lama di sheet <strong>"{{ SHEET_NAMES_KPI[kpi_type] }}"</strong>
+                akan <strong>diganti</strong> mulai {{ 'A2' if info.import_start_col == 1 else 'B2' }} setelah file lolos validasi,
+                termasuk mengosongkan sisa baris lama. Header dan kolom di luar area impor tetap dipertahankan.
+                {% if info.import_start_col == 2 %}Kolom XCEK beserta rumusnya tidak diubah dan tidak perlu dimasukkan ke file Excel.{% endif %}
+                Nama kolom pada baris pertama file harus sesuai dengan header area impor, tanpa kolom kosong,
+                duplikat, kurang, atau tambahan (maksimal 33 kolom/A–AG).
+                Urutan kolom boleh berbeda; sistem akan menyesuaikannya. File harus berisi baris data.
+                Ekspor tabel HTML berakhiran .xls dari website KPI juga didukung, tanpa perlu konversi,
+                selama berisi satu tabel lengkap dengan struktur kolom yang sesuai.</span>
             </div>
 
             <div class="kpi-upload-error" id="kpi-error">
@@ -374,7 +382,7 @@
     </div>
     {% endif %}
 
-    <!-- Tabel data -->
+    {# [BAGIAN] Tabel Hasil KPI #}
     <div class="kpi-table-section">
         <div class="kpi-table-header">
             <h2><i class="fa-solid fa-table" style="color:#0b3d91;"></i>
@@ -411,10 +419,10 @@
                                 <td>
                                     {# Highlight kolom f_tti / f_ffg / f_ttr (kolom terakhir) #}
                                     {% if i == row|length - 1 and cell %}
-                                        {% if 'COMP' in cell|string|upper %}
-                                            <span class="kpi-badge-comp">{{ cell }}</span>
-                                        {% elif 'NC' in cell|string|upper or 'NOT' in cell|string|upper %}
+                                        {% if 'NC' in cell|string|upper or 'NOT' in cell|string|upper %}
                                             <span class="kpi-badge-nc">{{ cell }}</span>
+                                        {% elif 'COMP' in cell|string|upper %}
+                                            <span class="kpi-badge-comp">{{ cell }}</span>
                                         {% else %}
                                             {{ cell }}
                                         {% endif %}
@@ -444,6 +452,7 @@
 
 {% block scripts_extra %}
 <script>
+// [BAGIAN] Validasi Pilihan File — pemeriksaan isi file tetap dilakukan backend.
 function onFileChange(input) {
     const label    = document.getElementById('kpi-file-label');
     const fname    = document.getElementById('kpi-filename');

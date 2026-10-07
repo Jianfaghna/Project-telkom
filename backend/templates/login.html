@@ -197,6 +197,7 @@
 
         <p class="login-subtitle">Monitoring Kendala &amp; Validasi ASO<br>Telkom Magelang</p>
 
+{# [FITUR] Login — form dikirim ke route login (POST). #}
         <form method="POST" action="{{ url_for('login') }}" data-testid="login-form" autocomplete="on">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

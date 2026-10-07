@@ -227,6 +227,7 @@
 </style>
 {% endblock %}
 
+{# [FITUR] User Online — route online_users. #}
 {% block content %}
 <div class="online-wrap">
 
@@ -284,7 +285,7 @@
         </div>
     </div>
 
-    <!-- Online users grid -->
+    {# [BAGIAN] Pengguna Online #}
     {% if online_users %}
     <div class="online-grid" id="online-grid">
         {% for u in online_users %}
@@ -349,7 +350,7 @@
     </div>
     {% endif %}
 
-    <!-- Offline users -->
+    {# [BAGIAN] Pengguna Offline #}
     {% set offline = all_users|rejectattr('username', 'in', online_users|map(attribute='username')|list)|list %}
     {% if offline %}
     <div class="offline-section">

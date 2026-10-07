@@ -341,6 +341,7 @@
 </style>
 {% endblock %}
 
+{# [FITUR] Manajemen Pengguna — route admin_users. #}
 {% block content %}
 <div class="admin-wrap">
 
@@ -371,7 +372,7 @@
         </div>
     </div>
 
-    <!-- Form tambah user (collapsed default) -->
+    {# [BAGIAN] Tambah Pengguna — POST ke admin_add_user. #}
     <div class="add-user-card" id="add-user-form" style="display:none;">
         <h2><i class="fa-solid fa-user-plus" style="color:#2563eb;"></i> Tambah User Baru</h2>
         <form method="POST" action="{{ url_for('admin_add_user') }}">
@@ -409,7 +410,7 @@
         </form>
     </div>
 
-    <!-- Toolbar: search + filter role -->
+    {# [BAGIAN] Pencarian dan Filter Role #}
     <div class="user-toolbar">
         <div class="search-wrap">
             <i class="fa-solid fa-magnifying-glass"></i>
@@ -430,7 +431,7 @@
         </select>
     </div>
 
-    <!-- Daftar user -->
+    {# [BAGIAN] Daftar Pengguna #}
     <div class="user-grid" id="user-grid">
         {% for u in users %}
         {% set is_self = (u.username == current_user.username) %}
@@ -503,7 +504,7 @@
 
 </div>
 
-<!-- ── Modal Edit Role ── -->
+{# [BAGIAN] Edit Pengguna — POST ke admin_edit_user. #}
 <div class="modal-backdrop" id="modal-edit">
     <div class="modal-box">
         <h3><i class="fa-solid fa-pen" style="color:#2563eb;"></i> Edit Role User</h3>
@@ -531,7 +532,7 @@
     </div>
 </div>
 
-<!-- ── Modal Reset Password ── -->
+{# [BAGIAN] Reset Password — POST ke admin_reset_password. #}
 <div class="modal-backdrop" id="modal-reset">
     <div class="modal-box">
         <h3><i class="fa-solid fa-key" style="color:#d97706;"></i> Reset Password</h3>
@@ -552,7 +553,7 @@
     </div>
 </div>
 
-<!-- ── Modal Hapus User ── -->
+{# [BAGIAN] Hapus Pengguna — POST ke admin_delete_user. #}
 <div class="modal-backdrop" id="modal-delete">
     <div class="modal-box">
         <h3><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> Hapus User</h3>

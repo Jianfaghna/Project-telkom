@@ -186,6 +186,7 @@
 </style>
 {% endblock %}
 
+{# [FITUR] Audit Log — route audit_log_view. #}
 {% block content %}
 <div class="main-content" data-testid="audit-log-page">
 
@@ -204,7 +205,7 @@
         </div>
     </div>
 
-    <!-- FILTER -->
+    {# [BAGIAN] Filter Audit Log #}
     <div class="filter-card" style="background:var(--surface); padding:14px 18px; margin-bottom:14px; border-radius:var(--radius-md,8px); box-shadow:var(--shadow-sm); border:1px solid var(--border);">
         <form method="GET" action="{{ url_for('audit_log_view') }}"
               style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
@@ -238,7 +239,7 @@
         </form>
     </div>
 
-    <!-- TABEL -->
+    {# [BAGIAN] Tabel Audit Log #}
     <div style="overflow-x:auto; border-radius:var(--radius-md,8px); box-shadow:var(--shadow-sm);">
         <table class="audit-table" data-testid="audit-table">
             <thead>
@@ -348,7 +349,7 @@
         </table>
     </div>
 
-    <!-- PAGINATION -->
+    {# [BAGIAN] Pagination #}
     {% if total_pages > 1 %}
     <div class="pagination-container" style="margin-top:16px;">
         <div class="pagination-info" style="color:var(--text-muted);">
@@ -372,7 +373,7 @@
 
 </div>
 
-<!-- MODAL BERSIHKAN LOG -->
+{# [BAGIAN] Bersihkan Audit Log — POST ke audit_log_clear. #}
 {% if current_user.role == 'admin' %}
 <div id="clear-log-modal">
     <div class="modal-box">

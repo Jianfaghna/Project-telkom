@@ -182,6 +182,7 @@
 </style>
 {% endblock %}
 
+{# [FITUR] Upload Data — BIMA dan KPRO. #}
 {% block content %}
 <div class="main-content upload-page">
     <div class="upload-header">
@@ -214,7 +215,7 @@
         </div>
     </div>
 
-    <!-- ── Form Filter BIMA ── -->
+    {# [BAGIAN] Upload BIMA — POST /filter, fungsi filter_data. #}
     <div class="upload-card" id="card-bima">
         <h2><i class="fa-solid fa-filter" style="color:#2563eb; margin-right:8px;"></i>Filter BIMA</h2>
 
@@ -267,7 +268,7 @@
         </div>
     </div>
 
-    <!-- ── Form Filter KPRO ── -->
+    {# [BAGIAN] Upload KPRO — POST /hapus_kolom, fungsi hapus_kolom. #}
     <div class="upload-card" id="card-kpro">
         <h2><i class="fa-solid fa-file-excel" style="color:#16a34a; margin-right:8px;"></i>Filter KPRO</h2>
 
@@ -279,7 +280,7 @@
             yang tidak diperlukan akan dihapus secara otomatis, lalu data dikirim ke sheet
             <strong>KPRO</strong> di Google Spreadsheet.<br>
             <ul>
-                <li>Sumber file: ekspor dari aplikasi <strong>KPRO</strong> Telkom (<code>.xlsx</code> / <code>.xls</code> / <code>.csv</code>)</li>
+                <li>Sumber file: ekspor dari aplikasi <strong>KPRO</strong> Telkom (<code>.xlsx</code> / <code>.xls</code>, termasuk ekspor tabel HTML .xls)</li>
                 <li>Kolom yang otomatis dihapus jika ada: <code>CRMORDERTYPE</code>, <code>REGIONAL LAMA</code>, <code>DISTRICT LAMA</code>, <code>DATEL LAMA</code></li>
                 <li>Proses: baca file → hapus kolom tidak perlu → upload ke sheet KPRO</li>
             </ul>
@@ -365,6 +366,7 @@
 });
 
 // ── Submit dengan validasi ──
+// [BAGIAN] Pengiriman Upload — validasi pilihan file dan tampilkan hasil backend.
 function submitUpload(key) {
     var fileInput = document.getElementById('file-' + key);
     var btn       = document.getElementById('btn-' + key);
@@ -401,30 +403,27 @@ function submitUpload(key) {
     formData.append('file', fileInput.files[0]);
     formData.append('kelas', kelas);
 
-    fetch(actionUrl, {
+    fetch(new URL(actionUrl, window.location.origin).href, {
         method: 'POST',
+        headers: { 'Accept': 'application/json' },
         body: formData
     })
     .then(function(response) {
-        // Flask redirect → ikuti ke halaman tujuan
-        if (response.redirected) {
-            window.location.href = response.url;
-        } else {
-            return response.text().then(function(html) {
-                // Jika ada flash error di response
-                var parser = new DOMParser();
-                var doc = parser.parseFromString(html, 'text/html');
-                var flashErr = doc.querySelector('.flash.error');
-                if (flashErr) {
-                    showError(key, flashErr.textContent.trim());
-                } else {
-                    window.location.reload();
-                }
-            });
+        var contentType = response.headers.get('Content-Type') || '';
+        if (!contentType.includes('application/json')) {
+            showError(key, 'Upload belum dapat dikonfirmasi. Sesi/izin mungkin berubah atau permintaan ditolak. Muat ulang halaman dan periksa data sebelum mencoba kembali.');
+            return;
         }
+        return response.json().then(function(result) {
+            if (!response.ok || !result.success) {
+                showError(key, result.message || 'Upload ditolak oleh server.');
+                return;
+            }
+            window.location.href = result.redirect_url;
+        });
     })
     .catch(function(err) {
-        showError(key, 'Gagal terhubung ke server: ' + err.message);
+        showError(key, 'Koneksi terputus; hasil upload belum dapat dipastikan. Periksa data sebelum mencoba kembali.');
     })
     .finally(function() {
         btn.classList.remove('loading');
@@ -437,6 +436,7 @@ function showError(key, msg) {
     var errEl   = document.getElementById('err-' + key);
     var errText = document.getElementById('err-' + key + '-text');
     errText.textContent = msg;
+    errEl.setAttribute('role', 'alert');
     errEl.classList.add('show');
     // Scroll ke error
     errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

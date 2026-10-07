@@ -51,12 +51,13 @@
 </style>
 {% endblock %}
 
+{# [FITUR] Verifikasi ODP — placeholder; route belum memuat data operasional. #}
 {% block content %}
 <div class="main-content">
     <h1 style="color:var(--text,#1e293b);"><i class="fa-solid fa-user-check"></i> Verifikasi ODP FULL</h1>
     <p style="color:var(--text-muted,#555); margin-top:-10px; margin-bottom:16px;">Halaman untuk melakukan verifikasi data ODP FULL.</p>
 
-    <!-- FILTER -->
+    {# [BAGIAN] Filter Pencarian #}
     <div class="filter-container" style="border-radius:12px; padding:20px; margin-top:0; background:#f9f9f9;">
         <h2 class="filter-title" style="font-size:16px; font-weight:bold; margin-bottom:15px;">
             <i class="fa-solid fa-filter"></i> VALIDASI ODP FULL
@@ -108,7 +109,7 @@
         </form>
     </div>
 
-    <!-- TABEL -->
+    {# [BAGIAN] Tabel Verifikasi ODP #}
     {% if data %}
     <div class="table-container" style="margin-top:20px; overflow-x:auto;">
         <table class="data-table">

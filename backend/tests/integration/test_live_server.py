@@ -1,5 +1,5 @@
 """
-FilterIN Backend Tests
+FilterIN Live Server Integration Tests
 Tests for authentication, CSRF, rate limiting, dashboard, kendala master, lock/unlock, audit log, etc.
 Note: Tests use Referer header to bypass Cloudflare protection
 """
@@ -8,15 +8,24 @@ import requests
 import os
 import re
 import time
-from bs4 import BeautifulSoup
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-ADMIN_USER = 'dava234'
-ADMIN_PASS = 'dava123'
-OPERATOR_USER = 'wadaw'
-OPERATOR_PASS = 'wadaw123'
+ADMIN_USER = os.environ.get('FILTERIN_TEST_ADMIN_USER', '')
+ADMIN_PASS = os.environ.get('FILTERIN_TEST_ADMIN_PASSWORD', '')
+OPERATOR_USER = os.environ.get('FILTERIN_TEST_OPERATOR_USER', '')
+OPERATOR_PASS = os.environ.get('FILTERIN_TEST_OPERATOR_PASSWORD', '')
+
+# Suite ini menulis ke server; hanya boleh dijalankan terhadap lingkungan uji khusus.
+pytestmark = pytest.mark.skipif(
+    os.environ.get('FILTERIN_RUN_LIVE_TESTS') != '1' or not BASE_URL,
+    reason='Integration tests require an explicitly configured disposable server.'
+)
+if os.environ.get('FILTERIN_RUN_LIVE_TESTS') != '1' or not BASE_URL:
+    pytest.skip('Live integration suite is disabled; use backend/tests/backend/test_backend_regressions.py locally.', allow_module_level=True)
+
+from bs4 import BeautifulSoup
 
 # Common headers to bypass Cloudflare
 COMMON_HEADERS = {

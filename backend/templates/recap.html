@@ -423,10 +423,11 @@
 </style>
 {% endblock %}
 
+{# [FITUR] Recap Report — ringkasan dari route recap. #}
 {% block content %}
 <div class="recap-page">
 
-    <!-- Print header (hanya muncul saat print) -->
+    {# [BAGIAN] Header Cetak — ditampilkan saat cetak atau simpan PDF. #}
     <div class="print-header">
         <div class="print-header-inner">
             <!-- Kiri: Logo Telkom + FilterIN -->
@@ -468,9 +469,7 @@
         </button>
     </div>
 
-    <!-- ==========================================
-         SECTION 1: SUMMARY STATISTIK
-         ========================================== -->
+    {# [BAGIAN] Ringkasan Statistik #}
     <div class="recap-section">
         <div class="recap-section-title" style="background:#0b3d91; color:#fff;">
             <i class="fa-solid fa-chart-pie"></i> Summary Statistik Workfail
@@ -503,9 +502,7 @@
         </div>
     </div>
 
-    <!-- ==========================================
-         SECTION 2: BREAKDOWN FEEDBACK ASO x DATEL
-         ========================================== -->
+    {# [BAGIAN] Feedback ASO per Datel #}
     <div class="recap-section">
         <div class="recap-section-title" style="background:#1e40af; color:#fff;">
             <i class="fa-solid fa-table"></i> Breakdown Feedback ASO per Datel (WO Active)
@@ -544,9 +541,7 @@
         </div>
     </div>
 
-    <!-- ==========================================
-         SECTION 3: BREAKDOWN ACTUAL KENDALA x DATEL
-         ========================================== -->
+    {# [BAGIAN] Actual Kendala per Datel #}
     <div class="recap-section">
         <div class="recap-section-title" style="background:#1e40af; color:#fff;">
             <i class="fa-solid fa-table"></i> Breakdown Actual Kendala per Datel (WO Active)
@@ -584,9 +579,7 @@
         </div>
     </div>
 
-    <!-- ==========================================
-         SECTION 4: REPORT KENDALA PER WILAYAH
-         ========================================== -->
+    {# [BAGIAN] Kendala per Wilayah #}
     <div class="recap-section">
         <div class="recap-section-title" style="background:#0f766e; color:#fff;">
             <i class="fa-solid fa-map-marker-alt"></i> Report Kendala per Wilayah (WO Active)
@@ -658,9 +651,7 @@
         </div>
     </div>
 
-    <!-- ==========================================
-         SECTION 5: TATI — BULANAN IZIN NOK
-         ========================================== -->
+    {# [BAGIAN] TATI Bulanan Izin NOK #}
     <div class="recap-section tati-section">
         <div class="recap-section-title">
             <i class="fa-solid fa-calendar-days"></i> TATI — Bulanan IZIN NOK ({{ tati_year }})
@@ -698,9 +689,7 @@
         </div>
     </div>
 
-    <!-- ==========================================
-         SECTION 6: TATI — HARIAN IZIN NOK
-         ========================================== -->
+    {# [BAGIAN] TATI Harian Izin NOK #}
     <div class="recap-section tati-section">
         <div class="recap-section-title">
             <i class="fa-solid fa-calendar-day"></i> TATI — Harian IZIN NOK ({{ tati_month_name }})
@@ -738,9 +727,7 @@
         </div>
     </div>
 
-    <!-- ==========================================
-         SECTION 7: LAPORAN VALIDASI ODP
-         ========================================== -->
+    {# [BAGIAN] Laporan Validasi ODP #}
     {% if odp_data %}
     <div class="recap-section odp-section">
         <div class="recap-section-title">

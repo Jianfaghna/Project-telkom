@@ -57,7 +57,7 @@ C. CARA INSTALASI PERTAMA KALI (STEP-BY-STEP)
      backend/
         app_flask.py           <- Kode utama aplikasi
         server.py              <- ASGI wrapper (tidak dipakai di lokal)
-        schema.sql             <- Struktur database MySQL
+        user_db.sql            <- Struktur lengkap 9 tabel MySQL
         .env                   <- Variabel environment
         credentials.json       <- Kunci Google Sheet (JANGAN DISEBAR!)
         requirements.txt       <- Daftar library Python
@@ -136,46 +136,52 @@ D. SETTING DATABASE MYSQL
 
   D.3  IMPORT STRUKTUR TABEL
   --------------------------
-  Di phpMyAdmin, klik database "user_db" di sidebar kiri.
-  Pilih tab "Import", klik "Choose File", pilih:
-     backend/schema.sql
-  Klik "Go" di bawah.
+  Di phpMyAdmin, pilih database tujuan sesuai MYSQL_DB pada backend/.env
+  (contoh: user_db). Pilih tab "Import", lalu pilih satu file:
+     backend/user_db.sql
+  Klik "Go". Nama file SQL tidak menentukan database tujuan.
 
-  Tabel yang akan dibuat:
-     - users           (akun login)
-     - edit_locks      (row lock)
-     - audit_log       (jejak siapa edit apa)
-     - sync_new_rows   (tracking data baru dari sync BIMA)
-     - login_attempts  (brute-force protection)
+  File ini sudah mencakup seluruh 9 tabel; tidak perlu file SQL tambahan:
+     - users           (akun login dan role)
+     - edit_locks      (penguncian baris)
+     - audit_log       (riwayat aktivitas)
+     - sync_new_rows   (tracking data baru dari sinkronisasi BIMA)
+     - login_attempts  (pencatatan percobaan login)
+     - user_sessions   (status pengguna online)
+     - sheet_cache     (penyimpanan sementara pembacaan sheet)
+     - watchlist       (order yang dipantau)
+     - announcements   (pengumuman)
 
-  Lalu import juga file tambahan untuk fitur Watchlist & Announcement:
-     backend/watchlist_announcement.sql
-  Tabel yang ditambahkan:
-     - watchlist       (bookmark order yang dipantau)
-     - announcements   (pengumuman admin di dashboard)
+  PENTING UNTUK DATABASE YANG SUDAH DIGUNAKAN:
+  Cadangkan database dan periksa struktur sebelum import. Perintah
+  CREATE TABLE IF NOT EXISTS hanya membuat tabel yang belum ada; tidak
+  menambahkan/mengubah kolom atau index pada tabel lama. Jika berbeda,
+  siapkan migrasi terpisah yang sudah diuji pada salinan database.
+  File ini tidak menghapus data, tidak berisi akun bawaan, dan bukan
+  backup data. Penggabungan file SQL tidak mengubah database aktif.
 
-  D.4  INSERT AKUN DEFAULT
-  ------------------------
-  Opsi A - Via script Python (RECOMMENDED, password di-hash otomatis):
+  D.4  BUAT ADMIN AWAL (KHUSUS INSTALASI BARU)
+  -------------------------------------------
+  Jika sudah memiliki akun Admin yang berfungsi, lewati langkah ini.
+  Tidak ada username/password bawaan yang otomatis dibuat saat import.
 
-     Buka terminal VS Code, jalankan:
-        cd backend
-        python hash_password.py
+  1. Aktifkan virtual environment proyek dengan dependensi backend.
+  2. Buat hash password secara lokal (password tidak ditampilkan):
+     python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass('Password Admin baru: ')))"
 
-     File ini akan mencari user dengan password plaintext dan
-     auto-hash. Tapi pertama, tambahkan user lewat phpMyAdmin dulu:
+     Gunakan password unik yang kuat dan simpan secara aman. Salin seluruh
+     hasil hash, bukan password aslinya. Jangan membagikan hasil hash.
+  3. Di phpMyAdmin, pilih database tujuan > tabel users > tab Insert.
+     Isi nama, username pilihan Anda, password dengan HASIL HASH tadi,
+     dan role = admin. Biarkan id auto-increment dan created_at default.
+  4. Login memakai username dan password asli yang dipilih pada langkah 2,
+     bukan menggunakan hasil hash sebagai password login.
+  5. Akun selanjutnya dibuat melalui Manajemen User oleh Admin; aplikasi
+     akan menghasilkan hash password sebelum menyimpannya.
 
-  Opsi B - Langsung SQL (password PLAIN TEXT, akan di-hash saat
-  login pertama kali):
-
-     Di phpMyAdmin > user_db > tab SQL, jalankan:
-
-        INSERT INTO users (nama, username, password, role) VALUES
-          ('Telkom Magelang', 'TelkomASO', 'TelkomASO001', 'admin'),
-          ('Devanda Adrian',  'dava234',   'dava123',       'admin'),
-          ('Operator 1',      'operator1', 'op123',         'operator');
-
-     *Password otomatis ter-hash saat user pertama kali login.*
+  hash_password.py tetap merupakan utilitas untuk akun lama/reset password,
+  bukan pembuat akun Admin awal. Jangan memasukkan password plaintext
+  hanya untuk menunggu proses hash pada login pertama.
 
 
 E. KONFIGURASI FILE .env
@@ -258,20 +264,16 @@ F. CARA MENJALANKAN APLIKASI
   Akses di browser sesuai F.2.
 
 
-G. DEFAULT AKUN LOGIN
----------------------
-Setelah setup D.4:
+G. AKUN LOGIN
+---------------
+Gunakan akun Admin yang dibuat pada D.4, atau akun yang sudah ada.
+Tidak ada akun/password default dari file instalasi SQL.
 
-     Username : TelkomASO    Password : TelkomASO001   (admin)
-     Username : dava234      Password : dava123        (admin)
-     Username : operator1    Password : op123          (operator)
-
-Role "admin" bisa lihat halaman "Audit Log".
-Role "operator" hanya bisa edit kendala, tidak lihat audit.
-Role "viewer" (jika dibuat): read-only.
-
-Catatan: password plain text akan OTOMATIS di-hash jadi pbkdf2
-saat user login pertama kali. Jadi aman.
+Role "admin": dapat mengelola pengguna, Audit Log keseluruhan, dan
+fungsi administratif lain yang diizinkan backend.
+Role "operator": dapat mengelola data operasional, tetapi tidak dapat
+membuka halaman Audit Log keseluruhan atau Manajemen User.
+Role "viewer": melihat data operasional tanpa akses aksi pengeditan.
 
 
 H. FITUR-FITUR UTAMA
@@ -419,9 +421,10 @@ J. TROUBLESHOOTING
           DELETE FROM edit_locks;
 
   J.10 PASSWORD USER LUPA
-       Bikin ulang via phpMyAdmin:
-          UPDATE users SET password='BARU123' WHERE username='XXX';
-       Password akan ter-hash saat login pertama.
+       Minta Admin melakukan reset lewat Manajemen User.
+       Jika tidak ada Admin yang dapat login, buat hash password baru
+       dengan langkah D.4 lalu perbarui hanya kolom password akun tujuan
+       melalui phpMyAdmin. Jangan menyimpan password plaintext.
 
 
 K. STRUKTUR FILE PROJECT (PENTING!)
@@ -430,8 +433,7 @@ K. STRUKTUR FILE PROJECT (PENTING!)
    ├─ backend/
    │  ├─ app_flask.py               <- KODE UTAMA (edit ini untuk tambah fitur)
    │  ├─ server.py                  <- Wrapper ASGI (abaikan untuk lokal)
-   │  ├─ schema.sql                 <- Struktur tabel MySQL utama
-   │  ├─ watchlist_announcement.sql <- Tabel watchlist & announcements
+   │  ├─ user_db.sql                <- Satu file instalasi, seluruh 9 tabel
    │  ├─ .env                       <- Config (JANGAN commit ke git!)
    │  ├─ .env.example               <- Template .env (aman di-commit)
    │  ├─ credentials.json           <- Kunci Google (JANGAN DISEBAR!)
