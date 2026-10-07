@@ -31,12 +31,16 @@ Gunakan nama fungsi/route sebagai acuan skripsi; nomor baris dapat bergeser.
 | `backend/tests/` | Pengujian backend dan interaksi frontend. |
 | `start_filterin.bat` | Peluncur lokal melalui Waitress, memakai `app_flask:flask_app`. |
 | `backend/server.py` | Pembungkus untuk deployment ASGI dengan prefix `/api`. |
-| `frontend/src/App.js` | Pengarah ke `/api/`, bukan implementasi halaman utama FilterIN. |
 | `backend/notes.txt` | Panduan pemasangan dan konfigurasi. |
 
 Route di bawah adalah route yang dideklarasikan Flask. Pada deployment melalui
 `server.py`, URL luar mendapat prefix `/api`; peluncur lokal tidak memakai
 pembungkus tersebut. Jangan menyamakan kedua pola URL ketika melakukan pengujian.
+
+Folder React `frontend/` lama telah dihapus karena tidak digunakan oleh peluncur
+lokal. Tampilan FilterIN tetap berada di `backend/templates/` dan `backend/static/`.
+Deployment lama yang mengandalkan React sebagai pengarah ke `/api/` perlu
+disesuaikan jika digunakan kembali.
 
 ## 3. Peta fitur ke backend dan tampilan
 

@@ -18,6 +18,7 @@ node_modules/
 
 # Testing
 /coverage
+.pytest_cache/
 
 # Next.js
 /.next/

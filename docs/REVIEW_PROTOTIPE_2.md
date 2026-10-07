@@ -25,7 +25,7 @@ kehadiran pengguna, penanda sinkronisasi, watchlist/pengumuman, dan cache penduk
 Cache tidak dijadikan sumber kebenaran operasional maupun fokus penelitian.
 
 Acuan utama adalah konteks pengguna pada percakapan ini dan implementasi repository.
-`memory/PRD.md` merupakan catatan historis, bukan bukti bahwa semua fitur sudah
+`docs/archive/PRD.md` merupakan catatan historis, bukan bukti bahwa semua fitur sudah
 berfungsi: antara lain nama kolom password, umur cache, dan daftar backlog di sana
 tidak seluruhnya mencerminkan implementasi sekarang. Tidak ada diagram yang
 digunakan untuk memaksakan perubahan proses bisnis. Skripsi lengkap/percakapan

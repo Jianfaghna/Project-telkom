@@ -1,15 +1,3 @@
--- FilterIN Prototipe 2 - skema instalasi MySQL/MariaDB
--- Satu-satunya file instalasi SQL: backend/user_db.sql (9 tabel pendukung).
--- Pilih database sesuai MYSQL_DB di backend/.env sebelum mengimpor file ini.
--- Nama file tidak menentukan database tujuan; tidak ada perintah USE/CREATE DATABASE.
---
--- Untuk instalasi baru: buat/pilih database, lalu impor file ini satu kali.
--- Untuk database lama: cadangkan dan periksa struktur terlebih dahulu.
--- CREATE TABLE IF NOT EXISTS tidak memperbarui kolom/index tabel yang sudah ada.
--- File ini bukan skrip migrasi atau backup data; tidak menghapus/mengisi ulang data.
--- Tidak ada akun/password bawaan. Buat Admin awal dengan password yang sudah di-hash.
--- Panduan instalasi dan pembuatan Admin awal: backend/notes.txt, bagian D.
-
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nama VARCHAR(100) NOT NULL,
